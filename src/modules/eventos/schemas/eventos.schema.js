@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { tallerSchema } = require('../../talleres/schemas/talleres.schema');
 
 const POLITICA_MENOR = ['obligatorio', 'opcional', 'no_aplica'];
 const MODO_TALLER = ['paralelos', 'secuenciales', 'ninguno'];
@@ -42,6 +43,7 @@ const crearEventoSchema = z.object({
       cbuCvu: z.string().max(50).optional(),
       aliasCobro: z.string().max(50).optional(),
       costo: z.number().nonnegative().default(0),
+      talleres: z.array(tallerSchema).optional().default([]),
       camposForm: z.array(campoFormSchema).optional().default([]),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {

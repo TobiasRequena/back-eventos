@@ -5,6 +5,11 @@ const morgan = require('morgan');
 
 const errorHandler = require('./middlewares/errorHandler');
 
+const { routerAnidado: talleresAnidado, routerPlano: talleresPlano } = require('./modules/talleres/routes/talleres.routes');
+const routerOrganizaciones = require('./modules/organizaciones/routes/organizaciones.routes');
+const routerEventos = require('./modules/eventos/routes/eventos.routes');
+const routerAuth = require('./modules/auth/routes/auth.routes');
+
 const app = express();
 
 // Middlewares globales
@@ -20,10 +25,11 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // Acá van montándose las rutas de cada módulo a medida que las construyamos:
-app.use('/api/v1/auth', require('./modules/auth/routes/auth.routes'));
-app.use('/api/v1/organizaciones', require('./modules/organizaciones/routes/organizaciones.routes'));
-app.use('/api/v1/eventos', require('./modules/eventos/routes/eventos.routes'));
-// ...
+app.use('/api/v1/auth', routerAuth);
+app.use('/api/v1/organizaciones', routerOrganizaciones);
+app.use('/api/v1/eventos', routerEventos);
+app.use('/api/v1/eventos', talleresAnidado);
+app.use('/api/v1/talleres', talleresPlano);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

@@ -1,6 +1,7 @@
 const { db } = require('../../../config/db');
 const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
+const talleresRepository = require('../../talleres/repositories/talleres.repository');
 
 /**
  * Crea un evento nuevo, junto con sus campos de formulario (si vienen),
@@ -59,6 +60,13 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
+    const talleresCreados = await talleresRepository.crearVarios(
+      evento.id,
+      orgId,
+      datos.talleres,
+      trx
+    );
+
     return {
       evento,
       camposForm: camposCreados,
@@ -67,6 +75,7 @@ async function crearEvento(orgId, usuarioId, datos) {
       // sin tener que calcularlo de nuevo del lado del cliente.
       // Cuando exista el módulo `pagos`, este flag es lo que va a disparar
       // la creación del registro de pago correspondiente.
+      talleres: talleresCreados,
       esPrimerEventoGratis: esPrimerEvento,
     };
   });
