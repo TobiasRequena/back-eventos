@@ -22,6 +22,7 @@ app.get('/api/v1/health', (req, res) => {
 // Acá van montándose las rutas de cada módulo a medida que las construyamos:
 app.use('/api/v1/auth', require('./modules/auth/routes/auth.routes'));
 app.use('/api/v1/organizaciones', require('./modules/organizaciones/routes/organizaciones.routes'));
+app.use('/api/v1/eventos', require('./modules/eventos/routes/eventos.routes'));
 // ...
 
 // 404 para rutas no encontradas
