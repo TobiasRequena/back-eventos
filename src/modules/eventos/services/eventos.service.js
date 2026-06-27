@@ -84,8 +84,21 @@ async function crearEvento(orgId, usuarioId, datos) {
 /**
  * Lista los eventos de la organización activa (la del header X-Org-Id).
  */
+/**
+ * Lista los eventos de la organización activa, cada uno con su cantidad
+ * de inscriptos (sin traer camposForm/talleres completos, para no
+ * sobrecargar la respuesta del listado).
+ *
+ * PENDIENTE: cantidadInscriptos hardcodeado en 0 — mismo pendiente que
+ * en obtenerEvento, hasta que exista el módulo participantes.
+ */
 async function listarEventos(orgId) {
-  return eventosRepository.listarPorOrganizacion(orgId);
+  const eventos = await eventosRepository.listarPorOrganizacion(orgId);
+
+  return eventos.map((evento) => ({
+    ...evento,
+    cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+  }));
 }
 
 /**
@@ -95,6 +108,15 @@ async function listarEventos(orgId) {
  * el orgId del header — no sabe a qué organización pertenece el evento
  * que se está pidiendo por :id. Por eso se valida acá, comparando
  * evento.org_id con el orgId activo.
+ */
+/**
+ * Busca un evento por id, con su detalle completo: campos_form, talleres,
+ * y cantidad de inscriptos.
+ *
+ * PENDIENTE: cantidadInscriptos está hardcodeado en 0 porque el módulo
+ * `participantes` todavía no existe. Cuando lo construyamos, reemplazar
+ * esta línea por una query real (ej. contar filas de `participante`
+ * con evento_id = este evento).
  */
 async function obtenerEvento(id, orgId) {
   const evento = await eventosRepository.buscarPorId(id);
@@ -106,15 +128,22 @@ async function obtenerEvento(id, orgId) {
   }
 
   if (evento.org_id !== orgId) {
-    // 403 en vez de 404: el evento existe, pero no es de esta organización.
-    // No le damos pistas de que "existe pero no es tuyo" con un 404 distinto,
-    // simplemente no tiene permiso.
     const error = new Error('No tenés permisos sobre este evento');
     error.status = 403;
     throw error;
   }
 
-  return evento;
+  const [camposForm, talleres] = await Promise.all([
+    formulariosRepository.listarPorEvento(evento.id),
+    talleresRepository.listarPorEvento(evento.id),
+  ]);
+
+  return {
+    ...evento,
+    camposForm,
+    talleres,
+    cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+  };
 }
 
 /**

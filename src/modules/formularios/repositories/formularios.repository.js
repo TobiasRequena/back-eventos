@@ -21,4 +21,11 @@ async function crearVarios(eventoId, orgId, campos, trx = db) {
   return trx('campo_form').insert(filas).returning('*');
 }
 
-module.exports = { crearVarios };
+/**
+ * Lista los campos de formulario de un evento, ordenados según el campo `orden`.
+ */
+async function listarPorEvento(eventoId) {
+  return db('campo_form').where({ evento_id: eventoId }).orderBy('orden', 'asc');
+}
+
+module.exports = { crearVarios, listarPorEvento };
