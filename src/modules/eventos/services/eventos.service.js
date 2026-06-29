@@ -2,6 +2,8 @@ const { db } = require('../../../config/db');
 const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
+const archivosRepository = require('../../archivos/repositories/archivos.repository');
+const { construirUrlPublica } = require('../../../utils/storage');
 
 /**
  * Crea un evento nuevo, junto con sus campos de formulario (si vienen),
@@ -95,10 +97,16 @@ async function crearEvento(orgId, usuarioId, datos) {
 async function listarEventos(orgId) {
   const eventos = await eventosRepository.listarPorOrganizacion(orgId);
 
-  return eventos.map((evento) => ({
-    ...evento,
-    cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
-  }));
+  return Promise.all(
+    eventos.map(async (evento) => {
+      const portada = await archivosRepository.buscarPortadaDeEvento(evento.id);
+      return {
+        ...evento,
+        cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+        imagenUrl: construirUrlPublica(portada?.key),
+      };
+    })
+  );
 }
 
 /**
@@ -133,9 +141,10 @@ async function obtenerEvento(id, orgId) {
     throw error;
   }
 
-  const [camposForm, talleres] = await Promise.all([
+  const [camposForm, talleres, portada] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarPorEvento(evento.id),
+    archivosRepository.buscarPortadaDeEvento(evento.id),
   ]);
 
   return {
@@ -143,6 +152,7 @@ async function obtenerEvento(id, orgId) {
     camposForm,
     talleres,
     cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+    imagenUrl: portada ? construirUrlPublica(portada.key) : null,
   };
 }
 

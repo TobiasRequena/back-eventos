@@ -39,6 +39,7 @@ async function crear(datos, trx = db) {
       codigo: datos.codigo,
       fecha_inicio: datos.fechaInicio,
       fecha_fin: datos.fechaFin,
+      imagen_url: datos.imagenUrl ?? null,
       politica_menor: datos.politicaMenor,
       tiene_grupos: datos.tieneGrupos,
       tiene_talleres: datos.tieneTalleres,

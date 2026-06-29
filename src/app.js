@@ -9,6 +9,7 @@ const { routerAnidado: talleresAnidado, routerPlano: talleresPlano } = require('
 const routerOrganizaciones = require('./modules/organizaciones/routes/organizaciones.routes');
 const routerEventos = require('./modules/eventos/routes/eventos.routes');
 const routerAuth = require('./modules/auth/routes/auth.routes');
+const routerArchivos = require('./modules/archivos/routes/archivos.routes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/v1/organizaciones', routerOrganizaciones);
 app.use('/api/v1/eventos', routerEventos);
 app.use('/api/v1/eventos', talleresAnidado);
 app.use('/api/v1/talleres', talleresPlano);
+app.use('/api/v1/archivos', routerArchivos);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {
