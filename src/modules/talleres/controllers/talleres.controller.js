@@ -1,24 +1,64 @@
 const talleresService = require('../services/talleres.service');
 
-async function crear(req, res, next) {
+// ---------- bloque_taller ----------
+
+async function crearBloque(req, res, next) {
   try {
-    const taller = await talleresService.crearTaller(req.params.eventoId, req.orgId, req.body);
+    const bloque = await talleresService.crearBloque(req.params.eventoId, req.orgId, req.body);
+    res.status(201).json({ bloque });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listarBloques(req, res, next) {
+  try {
+    const bloques = await talleresService.listarBloques(req.params.eventoId, req.orgId);
+    res.status(200).json({ bloques });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function obtenerBloque(req, res, next) {
+  try {
+    const bloque = await talleresService.obtenerBloque(req.params.id, req.orgId);
+    res.status(200).json({ bloque });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function editarBloque(req, res, next) {
+  try {
+    const bloque = await talleresService.editarBloque(req.params.id, req.orgId, req.body);
+    res.status(200).json({ bloque });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function eliminarBloque(req, res, next) {
+  try {
+    await talleresService.eliminarBloque(req.params.id, req.orgId);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------- taller ----------
+
+async function crearTallerEnBloque(req, res, next) {
+  try {
+    const taller = await talleresService.crearTallerEnBloque(req.params.bloqueId, req.orgId, req.body);
     res.status(201).json({ taller });
   } catch (error) {
     next(error);
   }
 }
 
-async function listar(req, res, next) {
-  try {
-    const talleres = await talleresService.listarTalleres(req.params.eventoId, req.orgId);
-    res.status(200).json({ talleres });
-  } catch (error) {
-    next(error);
-  }
-}
-
-async function obtener(req, res, next) {
+async function obtenerTaller(req, res, next) {
   try {
     const taller = await talleresService.obtenerTaller(req.params.id, req.orgId);
     res.status(200).json({ taller });
@@ -27,7 +67,7 @@ async function obtener(req, res, next) {
   }
 }
 
-async function editar(req, res, next) {
+async function editarTaller(req, res, next) {
   try {
     const taller = await talleresService.editarTaller(req.params.id, req.orgId, req.body);
     res.status(200).json({ taller });
@@ -36,7 +76,7 @@ async function editar(req, res, next) {
   }
 }
 
-async function eliminar(req, res, next) {
+async function eliminarTaller(req, res, next) {
   try {
     await talleresService.eliminarTaller(req.params.id, req.orgId);
     res.status(204).send();
@@ -81,11 +121,15 @@ async function desasignarParticipante(req, res, next) {
 }
 
 module.exports = {
-  crear,
-  listar,
-  obtener,
-  editar,
-  eliminar,
+  crearBloque,
+  listarBloques,
+  obtenerBloque,
+  editarBloque,
+  eliminarBloque,
+  crearTallerEnBloque,
+  obtenerTaller,
+  editarTaller,
+  eliminarTaller,
   listarInscriptos,
   asignarParticipante,
   desasignarParticipante,

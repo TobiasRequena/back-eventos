@@ -1,18 +1,14 @@
 const { z } = require('zod');
-const { tallerSchema } = require('../../talleres/schemas/talleres.schema');
+const { bloqueTallerSchema } = require('../../talleres/schemas/talleres.schema');
 
 const POLITICA_MENOR = ['obligatorio', 'opcional', 'no_aplica'];
-const MODO_TALLER = ['paralelos', 'secuenciales', 'ninguno'];
 const TIPO_CAMPO_FORM = ['texto', 'numero', 'fecha', 'seleccion', 'booleano'];
 
-// Schema de un campo de formulario individual, dentro del array.
-// Lo separamos para reusarlo también cuando construyamos el módulo
-// formularios (POST /eventos/:id/campos-form va a usar este mismo shape).
 const campoFormSchema = z
   .object({
     etiqueta: z.string().min(1, 'La etiqueta del campo es obligatoria').max(100),
     tipo: z.enum(TIPO_CAMPO_FORM),
-    opciones: z.array(z.string()).optional(), // solo tiene sentido si tipo === 'seleccion'
+    opciones: z.array(z.string()).optional(),
     requerido: z.boolean().default(false),
     orden: z.number().int().nonnegative(),
   })
@@ -39,12 +35,14 @@ const crearEventoSchema = z.object({
       politicaMenor: z.enum(POLITICA_MENOR).default('no_aplica'),
       tieneGrupos: z.boolean().default(false),
       tieneTalleres: z.boolean().default(false),
-      modoTaller: z.enum(MODO_TALLER).default('ninguno'),
       cbuCvu: z.string().max(50).optional(),
       aliasCobro: z.string().max(50).optional(),
       costo: z.number().nonnegative().default(0),
-      talleres: z.array(tallerSchema).optional().default([]),
       camposForm: z.array(campoFormSchema).optional().default([]),
+      // Reemplaza al viejo array plano `talleres` — ahora cada elemento
+      // es un bloque con sus talleres adentro (ver nota en MODELO_DATOS.md
+      // sobre bloque_taller).
+      bloquesTaller: z.array(bloqueTallerSchema).optional().default([]),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
       message: 'fechaFin debe ser igual o posterior a fechaInicio',
@@ -64,7 +62,6 @@ const editarEventoSchema = z.object({
     politicaMenor: z.enum(POLITICA_MENOR).optional(),
     tieneGrupos: z.boolean().optional(),
     tieneTalleres: z.boolean().optional(),
-    modoTaller: z.enum(MODO_TALLER).optional(),
     cbuCvu: z.string().max(50).optional(),
     aliasCobro: z.string().max(50).optional(),
     costo: z.number().nonnegative().optional(),
@@ -90,6 +87,5 @@ module.exports = {
   buscarPorCodigoSchema,
   campoFormSchema,
   POLITICA_MENOR,
-  MODO_TALLER,
   TIPO_CAMPO_FORM,
 };

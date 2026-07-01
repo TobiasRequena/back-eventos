@@ -5,7 +5,12 @@ const morgan = require('morgan');
 
 const errorHandler = require('./middlewares/errorHandler');
 
-const { routerAnidado: talleresAnidado, routerPlano: talleresPlano } = require('./modules/talleres/routes/talleres.routes');
+const {
+    routerBloquesAnidado,
+    routerTalleresEnBloque,
+    routerBloquesPlano,
+    routerTalleresPlano,
+} = require('./modules/talleres/routes/talleres.routes');
 const routerOrganizaciones = require('./modules/organizaciones/routes/organizaciones.routes');
 const routerEventos = require('./modules/eventos/routes/eventos.routes');
 const routerAuth = require('./modules/auth/routes/auth.routes');
@@ -29,8 +34,10 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/auth', routerAuth);
 app.use('/api/v1/organizaciones', routerOrganizaciones);
 app.use('/api/v1/eventos', routerEventos);
-app.use('/api/v1/eventos', talleresAnidado);
-app.use('/api/v1/talleres', talleresPlano);
+app.use('/api/v1/eventos', routerBloquesAnidado);       // POST/GET /eventos/:eventoId/bloques-taller
+app.use('/api/v1/bloques-taller', routerTalleresEnBloque); // POST /bloques-taller/:bloqueId/talleres
+app.use('/api/v1/bloques-taller', routerBloquesPlano);     // GET/PATCH/DELETE /bloques-taller/:id
+app.use('/api/v1/talleres', routerTalleresPlano);           // GET/PATCH/DELETE /talleres/:id + inscriptos
 app.use('/api/v1/archivos', routerArchivos);
 
 // 404 para rutas no encontradas

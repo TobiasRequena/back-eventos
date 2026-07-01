@@ -5,44 +5,66 @@ const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const {
-  crearTallerSchema,
+  crearBloqueTallerSchema,
+  editarBloqueTallerSchema,
+  crearTallerEnBloqueSchema,
   editarTallerSchema,
   idParamSchema,
   asignarParticipanteSchema,
   desasignarParticipanteSchema,
 } = require('../schemas/talleres.schema');
 
-// Router anidado: se monta en app.js bajo /api/v1/eventos
-const routerAnidado = express.Router({ mergeParams: true });
-routerAnidado.use(autenticar);
-routerAnidado.use(resolverOrganizacionActiva);
-routerAnidado.post(
-  '/:eventoId/talleres',
-  validate(crearTallerSchema),
-  talleresController.crear
+// Router anidado en /eventos/:eventoId/bloques-taller — crear y listar bloques de un evento.
+const routerBloquesAnidado = express.Router({ mergeParams: true });
+routerBloquesAnidado.use(autenticar);
+routerBloquesAnidado.use(resolverOrganizacionActiva);
+routerBloquesAnidado.post(
+  '/:eventoId/bloques-taller',
+  validate(crearBloqueTallerSchema),
+  talleresController.crearBloque
 );
-routerAnidado.get(
-  '/:eventoId/talleres',
-  talleresController.listar
+routerBloquesAnidado.get('/:eventoId/bloques-taller', talleresController.listarBloques);
+
+// Router anidado en /bloques-taller/:bloqueId/talleres — agregar un taller suelto a un bloque existente.
+const routerTalleresEnBloque = express.Router({ mergeParams: true });
+routerTalleresEnBloque.use(autenticar);
+routerTalleresEnBloque.use(resolverOrganizacionActiva);
+routerTalleresEnBloque.post(
+  '/:bloqueId/talleres',
+  validate(crearTallerEnBloqueSchema),
+  talleresController.crearTallerEnBloque
 );
 
-// Router plano: se monta en app.js bajo /api/v1/talleres
-const routerPlano = express.Router();
-routerPlano.use(autenticar);
-routerPlano.use(resolverOrganizacionActiva);
-routerPlano.get('/:id', validate(idParamSchema), talleresController.obtener);
-routerPlano.patch('/:id', validate(editarTallerSchema), talleresController.editar);
-routerPlano.delete('/:id', validate(idParamSchema), talleresController.eliminar);
-routerPlano.get('/:id/inscriptos', validate(idParamSchema), talleresController.listarInscriptos);
-routerPlano.post(
+// Router plano en /bloques-taller/:id — operaciones puntuales sobre un bloque.
+const routerBloquesPlano = express.Router();
+routerBloquesPlano.use(autenticar);
+routerBloquesPlano.use(resolverOrganizacionActiva);
+routerBloquesPlano.get('/:id', validate(idParamSchema), talleresController.obtenerBloque);
+routerBloquesPlano.patch('/:id', validate(editarBloqueTallerSchema), talleresController.editarBloque);
+routerBloquesPlano.delete('/:id', validate(idParamSchema), talleresController.eliminarBloque);
+
+// Router plano en /talleres/:id — operaciones puntuales sobre un taller.
+const routerTalleresPlano = express.Router();
+routerTalleresPlano.use(autenticar);
+routerTalleresPlano.use(resolverOrganizacionActiva);
+routerTalleresPlano.get('/:id', validate(idParamSchema), talleresController.obtenerTaller);
+routerTalleresPlano.patch('/:id', validate(editarTallerSchema), talleresController.editarTaller);
+routerTalleresPlano.delete('/:id', validate(idParamSchema), talleresController.eliminarTaller);
+routerTalleresPlano.get('/:id/inscriptos', validate(idParamSchema), talleresController.listarInscriptos);
+routerTalleresPlano.post(
   '/:id/inscriptos',
   validate(asignarParticipanteSchema),
   talleresController.asignarParticipante
 );
-routerPlano.delete(
+routerTalleresPlano.delete(
   '/:id/inscriptos/:participanteId',
   validate(desasignarParticipanteSchema),
   talleresController.desasignarParticipante
 );
 
-module.exports = { routerAnidado, routerPlano };
+module.exports = {
+  routerBloquesAnidado,
+  routerTalleresEnBloque,
+  routerBloquesPlano,
+  routerTalleresPlano,
+};

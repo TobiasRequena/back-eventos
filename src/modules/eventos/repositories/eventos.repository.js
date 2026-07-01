@@ -43,7 +43,6 @@ async function crear(datos, trx = db) {
       politica_menor: datos.politicaMenor,
       tiene_grupos: datos.tieneGrupos,
       tiene_talleres: datos.tieneTalleres,
-      modo_taller: datos.modoTaller,
       cbu_cvu: datos.cbuCvu ?? null,
       alias_cobro: datos.aliasCobro ?? null,
       costo: datos.costo,

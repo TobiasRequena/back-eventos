@@ -46,7 +46,6 @@ async function crearEvento(orgId, usuarioId, datos) {
         politicaMenor: datos.politicaMenor,
         tieneGrupos: datos.tieneGrupos,
         tieneTalleres: datos.tieneTalleres,
-        modoTaller: datos.modoTaller,
         cbuCvu: datos.cbuCvu,
         aliasCobro: datos.aliasCobro,
         costo: datos.costo,
@@ -62,10 +61,10 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
-    const talleresCreados = await talleresRepository.crearVarios(
+    const bloquesCreados = await talleresRepository.crearBloquesConTalleres(
       evento.id,
       orgId,
-      datos.talleres,
+      datos.bloquesTaller,
       trx
     );
 
@@ -77,7 +76,7 @@ async function crearEvento(orgId, usuarioId, datos) {
       // sin tener que calcularlo de nuevo del lado del cliente.
       // Cuando exista el módulo `pagos`, este flag es lo que va a disparar
       // la creación del registro de pago correspondiente.
-      talleres: talleresCreados,
+      bloquesTaller: bloquesCreados,
       esPrimerEventoGratis: esPrimerEvento,
     };
   });
@@ -141,16 +140,16 @@ async function obtenerEvento(id, orgId) {
     throw error;
   }
 
-  const [camposForm, talleres, portada] = await Promise.all([
+  const [camposForm, bloquesTaller, portada] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
-    talleresRepository.listarPorEvento(evento.id),
+    talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
   ]);
 
   return {
     ...evento,
     camposForm,
-    talleres,
+    bloquesTaller,
     cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
     imagenUrl: portada ? construirUrlPublica(portada.key) : null,
   };
@@ -184,7 +183,6 @@ async function editarEvento(id, orgId, datos) {
   if (datos.politicaMenor !== undefined) datosDb.politica_menor = datos.politicaMenor;
   if (datos.tieneGrupos !== undefined) datosDb.tiene_grupos = datos.tieneGrupos;
   if (datos.tieneTalleres !== undefined) datosDb.tiene_talleres = datos.tieneTalleres;
-  if (datos.modoTaller !== undefined) datosDb.modo_taller = datos.modoTaller;
   if (datos.cbuCvu !== undefined) datosDb.cbu_cvu = datos.cbuCvu;
   if (datos.aliasCobro !== undefined) datosDb.alias_cobro = datos.aliasCobro;
   if (datos.costo !== undefined) datosDb.costo = datos.costo;
