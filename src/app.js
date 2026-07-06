@@ -15,6 +15,10 @@ const routerOrganizaciones = require('./modules/organizaciones/routes/organizaci
 const routerEventos = require('./modules/eventos/routes/eventos.routes');
 const routerAuth = require('./modules/auth/routes/auth.routes');
 const routerArchivos = require('./modules/archivos/routes/archivos.routes');
+const {
+    routerAnidado: participantesAnidado,
+    routerPlano: participantesPlano,
+} = require('./modules/participantes/routes/participantes.routes');
 
 const app = express();
 
@@ -39,6 +43,8 @@ app.use('/api/v1/bloques-taller', routerTalleresEnBloque); // POST /bloques-tall
 app.use('/api/v1/bloques-taller', routerBloquesPlano);     // GET/PATCH/DELETE /bloques-taller/:id
 app.use('/api/v1/talleres', routerTalleresPlano);           // GET/PATCH/DELETE /talleres/:id + inscriptos
 app.use('/api/v1/archivos', routerArchivos);
+app.use('/api/v1/eventos', participantesAnidado);
+app.use('/api/v1/participantes', participantesPlano);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

@@ -21,9 +21,19 @@ router.get(
   eventosController.buscarPorCodigo
 );
 
-// A partir de acá, todo requiere estar logueado Y tener una organización activa
-// declarada en el header X-Org-Id.
+// A partir de acá, todo requiere estar logueado.
 router.use(autenticar);
+
+// Requiere token pero NO requiere X-Org-Id — la disponibilidad de un código
+// es global (entre todos los eventos vigentes), no está limitada a una org.
+// Va ANTES de resolverOrganizacionActiva y ANTES de /codigo/:codigo para que
+// Express no interprete "disponible" como el valor del param :codigo.
+router.get(
+  '/codigo/:codigo/disponible',
+  validate(buscarPorCodigoSchema),
+  eventosController.verificarDisponibilidadCodigo
+);
+
 router.use(resolverOrganizacionActiva);
 
 router.post('/', validate(crearEventoSchema), eventosController.crear);

@@ -76,4 +76,19 @@ async function buscarPorCodigo(req, res, next) {
   }
 }
 
-module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo };
+/**
+ * GET /api/v1/eventos/codigo/:codigo/disponible
+ * Requiere autenticación. Lo usan los organizadores desde el formulario
+ * de creación de eventos para saber en tiempo real si el código elegido
+ * ya está en uso por otro evento vigente.
+ */
+async function verificarDisponibilidadCodigo(req, res, next) {
+  try {
+    const resultado = await eventosService.verificarDisponibilidadCodigo(req.params.codigo);
+    res.status(200).json(resultado);
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo };

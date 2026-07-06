@@ -3,6 +3,8 @@ const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
 const archivosRepository = require('../../archivos/repositories/archivos.repository');
+const participantesRepository = require('../../participantes/repositories/participantes.repository');
+
 const { construirUrlPublica } = require('../../../utils/storage');
 
 /**
@@ -98,10 +100,14 @@ async function listarEventos(orgId) {
 
   return Promise.all(
     eventos.map(async (evento) => {
-      const portada = await archivosRepository.buscarPortadaDeEvento(evento.id);
+      const [portada, cantidadInscriptos] = await Promise.all([
+        archivosRepository.buscarPortadaDeEvento(evento.id),
+        participantesRepository.contarPorEvento(evento.id),
+      ]);
+
       return {
         ...evento,
-        cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+        cantidadInscriptos,
         imagenUrl: construirUrlPublica(portada?.key),
       };
     })
@@ -140,17 +146,18 @@ async function obtenerEvento(id, orgId) {
     throw error;
   }
 
-  const [camposForm, bloquesTaller, portada] = await Promise.all([
+  const [camposForm, bloquesTaller, portada, cantidadInscriptos] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
+    participantesRepository.contarPorEvento(evento.id),
   ]);
 
   return {
     ...evento,
     camposForm,
     bloquesTaller,
-    cantidadInscriptos: 0, // TODO: reemplazar cuando exista el módulo participantes
+    cantidadInscriptos,
     imagenUrl: portada ? construirUrlPublica(portada.key) : null,
   };
 }
@@ -218,6 +225,20 @@ async function buscarPorCodigoPublico(codigo) {
   return evento;
 }
 
+/**
+ * Verifica si un código de evento está disponible (no hay ningún evento
+ * vigente con ese código). Requiere autenticación — solo usuarios logueados
+ * (organizadores) deberían poder consultar esto, desde el formulario de
+ * creación de eventos.
+ *
+ * Reutiliza buscarActivoPorCodigo: si devuelve algo, el código está ocupado;
+ * si devuelve null/undefined, está libre.
+ */
+async function verificarDisponibilidadCodigo(codigo) {
+  const eventoExistente = await eventosRepository.buscarActivoPorCodigo(codigo);
+  return { disponible: !eventoExistente };
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -225,4 +246,5 @@ module.exports = {
   editarEvento,
   eliminarEvento,
   buscarPorCodigoPublico,
+  verificarDisponibilidadCodigo,
 };

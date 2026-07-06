@@ -5,7 +5,7 @@ const app = require('./src/app');
 const { initSockets } = require('./src/sockets');
 const { verificarConexion } = require('./src/config/db');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 async function iniciar() {
     await verificarConexion();

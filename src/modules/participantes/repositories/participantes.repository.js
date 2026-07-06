@@ -1,0 +1,93 @@
+const { db } = require('../../../config/db');
+
+/**
+ * Verifica si ya existe un participante con el mismo DNI en el mismo evento.
+ * Reproduce el UNIQUE (evento_id, dni) de la tabla — lo chequeamos antes
+ * del INSERT para dar un mensaje claro en lugar del error crudo de PostgreSQL.
+ */
+async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
+  return trx('participante').where({ dni, evento_id: eventoId }).first();
+}
+
+async function buscarPorId(id, trx = db) {
+  return trx('participante').where({ id }).first();
+}
+
+/**
+ * Lista los participantes de un evento, con filtros opcionales.
+ * Los filtros (grupoId, estadoPago, rolGrupo) vienen del query string
+ * y se aplican dinámicamente solo si están presentes.
+ */
+async function listarPorEvento(eventoId, filtros = {}) {
+  const query = db('participante').where({ evento_id: eventoId });
+
+  if (filtros.grupoId) query.andWhere({ grupo_id: filtros.grupoId });
+  if (filtros.rolGrupo) query.andWhere({ rol_grupo: filtros.rolGrupo });
+  if (filtros.estadoPago) query.andWhere({ estado_pago: filtros.estadoPago });
+  if (filtros.estadoVinculo) query.andWhere({ estado_vinculo: filtros.estadoVinculo });
+
+  return query.orderBy('creado_en', 'asc');
+}
+
+/**
+ * Cuenta los participantes de un evento — reemplaza el cantidadInscriptos: 0
+ * hardcodeado en eventos.service.
+ */
+async function contarPorEvento(eventoId, trx = db) {
+  const [{ count }] = await trx('participante').where({ evento_id: eventoId }).count('id');
+  return Number(count);
+}
+
+async function crear(datos, trx = db) {
+  const [participante] = await trx('participante')
+    .insert({
+      org_id: datos.orgId,
+      evento_id: datos.eventoId,
+      grupo_id: datos.grupoId ?? null,
+      nombre: datos.nombre,
+      apellido: datos.apellido,
+      email: datos.email,
+      dni: datos.dni,
+      nacimiento: datos.nacimiento,
+      es_mayor: datos.esMayor,
+      rol_grupo: datos.rolGrupo,
+      estado_vinculo: datos.estadoVinculo ?? null,
+      responsable_id: datos.responsableId ?? null,
+      respuestas_form: JSON.stringify(datos.respuestasForm ?? {}),
+      estado_pago: datos.estadoPago ?? 'no_aplica',
+      pagado_por: datos.pagadoPor ?? null,
+      qr_personal: datos.qrPersonal,
+    })
+    .returning('*');
+
+  return participante;
+}
+
+async function actualizar(id, datos, trx = db) {
+  const [participante] = await trx('participante').where({ id }).update(datos).returning('*');
+  return participante;
+}
+
+async function eliminar(id, trx = db) {
+  return trx('participante').where({ id }).del();
+}
+
+/**
+ * Busca un participante por su qr_personal — es la query del escaneo
+ * de acreditación. Ya tiene índice implícito por el UNIQUE, así que
+ * es rápida incluso con 15.000+ inscriptos.
+ */
+async function buscarPorQr(qrPersonal, trx = db) {
+  return trx('participante').where({ qr_personal: qrPersonal }).first();
+}
+
+module.exports = {
+  buscarPorDniEnEvento,
+  buscarPorId,
+  listarPorEvento,
+  contarPorEvento,
+  crear,
+  actualizar,
+  eliminar,
+  buscarPorQr,
+};
