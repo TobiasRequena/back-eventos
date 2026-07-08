@@ -20,10 +20,13 @@ const crearParticipanteSchema = z.object({
     // Contexto del evento
     eventoId: z.string().uuid('eventoId inválido'),
 
+
     // Grupo (opcional — si no viene, es inscripción individual)
-    grupoId: z.string().uuid().optional(),
+    grupoId: z.string().uuid().nullable().optional(),
+
     rolGrupo: z.enum(ROL_GRUPO).default('ninguno'),
-    responsableId: z.string().uuid().optional(), // solo si es menor vinculado a un responsable
+    responsableId: z.string().uuid().nullable().optional(),
+    // solo si es menor vinculado a un responsable
 
     // Respuestas al formulario dinámico del evento
     // Objeto libre: { [campo_form_id]: valor }

@@ -57,6 +57,12 @@ const editarEventoSchema = z.object({
   body: z.object({
     nombre: z.string().min(1).max(150).optional(),
     descripcion: z.string().max(2000).optional(),
+    codigo: z
+      .string()
+      .min(3)
+      .max(20)
+      .regex(/^[A-Za-z0-9_-]+$/, 'El código solo puede tener letras, números, guiones')
+      .optional(),
     fechaInicio: z.string().datetime().optional(),
     fechaFin: z.string().datetime().optional(),
     politicaMenor: z.enum(POLITICA_MENOR).optional(),

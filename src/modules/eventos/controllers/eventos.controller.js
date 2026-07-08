@@ -91,4 +91,16 @@ async function verificarDisponibilidadCodigo(req, res, next) {
   }
 }
 
-module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo };
+/**
+ * GET /api/v1/eventos/:id/stats
+ */
+async function stats(req, res, next) {
+  try {
+    const resultado = await eventosService.obtenerStats(req.params.id, req.orgId);
+    res.status(200).json(resultado);
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats };

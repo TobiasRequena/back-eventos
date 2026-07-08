@@ -116,15 +116,37 @@ async function contarInscriptos(tallerId, trx = db) {
   return Number(count);
 }
 
+/**
+ * Lista todos los participantes inscriptos a un taller, con todos los
+ * campos de participante disponibles. El front decide qué mostrar.
+ */
 async function listarInscriptos(tallerId) {
   return db('participante_taller')
     .join('participante', 'participante.id', 'participante_taller.participante_id')
     .where('participante_taller.taller_id', tallerId)
     .select(
+      // Todos los campos de participante
       'participante.id',
+      'participante.org_id',
+      'participante.evento_id',
+      'participante.grupo_id',
       'participante.nombre',
       'participante.apellido',
-      'participante_taller.id as inscripcion_id'
+      'participante.email',
+      'participante.dni',
+      'participante.nacimiento',
+      'participante.es_mayor',
+      'participante.rol_grupo',
+      'participante.estado_vinculo',
+      'participante.responsable_id',
+      'participante.respuestas_form',
+      'participante.estado_pago',
+      'participante.pagado_por',
+      'participante.qr_personal',
+      'participante.creado_en',
+      'participante.actualizado_en',
+      // Dato extra de la tabla puente — útil para saber cuándo se asignó al taller
+      'participante_taller.id as inscripcion_taller_id'
     );
 }
 

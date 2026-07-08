@@ -86,6 +86,34 @@ async function eliminar(id, trx = db) {
   return trx('evento').where({ id }).del();
 }
 
+/**
+ * Cuenta el total de inscriptos de un evento.
+ */
+async function contarInscriptos(eventoId) {
+  const [{ count }] = await db('participante').where({ evento_id: eventoId }).count('id');
+  return Number(count);
+}
+
+/**
+ * Cuenta los inscriptos a un taller puntual (via participante_taller).
+ */
+async function contarInscriptosPorTaller(tallerId) {
+  const [{ count }] = await db('participante_taller').where({ taller_id: tallerId }).count('id');
+  return Number(count);
+}
+
+/**
+ * Trae todas las respuestas_form de los participantes de un evento —
+ * cada fila es un JSONB { [campo_form_id]: valor }.
+ * Se usa para calcular las respuestas populares de los campos del formulario.
+ */
+async function listarRespuestasForm(eventoId) {
+  return db('participante')
+    .where({ evento_id: eventoId })
+    .whereNotNull('respuestas_form')
+    .select('respuestas_form');
+}
+
 module.exports = {
   contarPorOrganizacion,
   buscarActivoPorCodigo,
@@ -94,4 +122,7 @@ module.exports = {
   buscarPorId,
   actualizar,
   eliminar,
+  contarInscriptos,
+  contarInscriptosPorTaller,
+  listarRespuestasForm,
 };

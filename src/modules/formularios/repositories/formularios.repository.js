@@ -28,4 +28,54 @@ async function listarPorEvento(eventoId) {
   return db('campo_form').where({ evento_id: eventoId }).orderBy('orden', 'asc');
 }
 
-module.exports = { crearVarios, listarPorEvento };
+async function buscarPorId(id, trx = db) {
+  return trx('campo_form').where({ id }).first();
+}
+
+async function crear(eventoId, orgId, datos, trx = db) {
+  const [campo] = await trx('campo_form')
+    .insert({
+      evento_id: eventoId,
+      org_id: orgId,
+      etiqueta: datos.etiqueta,
+      tipo: datos.tipo,
+      opciones: datos.tipo === 'seleccion' ? JSON.stringify(datos.opciones) : null,
+      requerido: datos.requerido ?? false,
+      orden: datos.orden,
+    })
+    .returning('*');
+
+  return campo;
+}
+
+async function actualizar(id, datos, trx = db) {
+  const [campo] = await trx('campo_form').where({ id }).update(datos).returning('*');
+  return campo;
+}
+
+async function eliminar(id, trx = db) {
+  return trx('campo_form').where({ id }).del();
+}
+
+/**
+ * Reordena varios campos en una sola operación.
+ * Recibe un array de { id, orden } y actualiza cada uno.
+ * Usamos Promise.all para ejecutar todos los UPDATEs en paralelo.
+ */
+async function reordenar(campos, trx = db) {
+  return Promise.all(
+    campos.map(({ id, orden }) =>
+      trx('campo_form').where({ id }).update({ orden }).returning('*')
+    )
+  );
+}
+
+module.exports = {
+  crearVarios,
+  listarPorEvento,
+  buscarPorId,
+  crear,
+  actualizar,
+  eliminar,
+  reordenar,
+};

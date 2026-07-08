@@ -17,8 +17,15 @@ const routerAuth = require('./modules/auth/routes/auth.routes');
 const routerArchivos = require('./modules/archivos/routes/archivos.routes');
 const {
     routerAnidado: participantesAnidado,
+    routerPublico: participantesPublico,
     routerPlano: participantesPlano,
 } = require('./modules/participantes/routes/participantes.routes');
+const {
+    routerPublico: gruposPublico,
+    routerAnidado: gruposAnidado,
+    routerPlano: gruposPlano,
+} = require('./modules/grupos/routes/grupos.routes');
+const routerFormularios = require('./modules/formularios/routes/formularios.routes');
 
 const app = express();
 
@@ -35,16 +42,36 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // Acá van montándose las rutas de cada módulo a medida que las construyamos:
+// Auth
 app.use('/api/v1/auth', routerAuth);
+
+// Organizaciones
 app.use('/api/v1/organizaciones', routerOrganizaciones);
+
+// Eventos: CRUD + stats + búsqueda por código
 app.use('/api/v1/eventos', routerEventos);
-app.use('/api/v1/eventos', routerBloquesAnidado);       // POST/GET /eventos/:eventoId/bloques-taller
-app.use('/api/v1/bloques-taller', routerTalleresEnBloque); // POST /bloques-taller/:bloqueId/talleres
-app.use('/api/v1/bloques-taller', routerBloquesPlano);     // GET/PATCH/DELETE /bloques-taller/:id
-app.use('/api/v1/talleres', routerTalleresPlano);           // GET/PATCH/DELETE /talleres/:id + inscriptos
+
+// Talleres: bloques anidados en evento, talleres en bloque, CRUD plano
+app.use('/api/v1/eventos', routerBloquesAnidado);
+app.use('/api/v1/bloques-taller', routerTalleresEnBloque);
+app.use('/api/v1/bloques-taller', routerBloquesPlano);
+app.use('/api/v1/talleres', routerTalleresPlano);
+
+// Archivos
 app.use('/api/v1/archivos', routerArchivos);
+
+// Participantes
+app.use('/api/v1/participantes', participantesPublico);  // público — va primero
 app.use('/api/v1/eventos', participantesAnidado);
 app.use('/api/v1/participantes', participantesPlano);
+
+// Grupos
+app.use('/api/v1/grupos', gruposPublico);
+app.use('/api/v1/eventos', gruposAnidado);
+app.use('/api/v1/grupos', gruposPlano);
+
+// Formularios
+app.use('/api/v1/eventos', routerFormularios);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

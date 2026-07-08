@@ -7,7 +7,12 @@ const participantesService = require('../services/participantes.service');
  */
 async function crear(req, res, next) {
   try {
-    const participante = await participantesService.crearParticipante(req.orgId, req.body);
+    // req.orgId puede ser undefined si viene de inscripción pública (sin X-Org-Id)
+    // El service lo resuelve a partir del eventoId en ese caso
+    const participante = await participantesService.crearParticipante(
+      req.orgId ?? null,
+      req.body
+    );
     res.status(201).json({ participante });
   } catch (error) {
     next(error);

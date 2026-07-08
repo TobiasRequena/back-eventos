@@ -13,20 +13,38 @@ async function buscarPorId(id, trx = db) {
   return trx('participante').where({ id }).first();
 }
 
+async function buscarPorEmailEnEvento(email, eventoId, trx = db) {
+  return trx('participante').where({ email, evento_id: eventoId }).first();
+}
+
 /**
  * Lista los participantes de un evento, con filtros opcionales.
  * Los filtros (grupoId, estadoPago, rolGrupo) vienen del query string
  * y se aplican dinámicamente solo si están presentes.
  */
 async function listarPorEvento(eventoId, filtros = {}) {
-  const query = db('participante').where({ evento_id: eventoId });
+  const query = db('participante')
+    .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
+    .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .where('participante.evento_id', eventoId)
+    .select(
+      'participante.*',
+      // Objeto grupo si existe, null si no
+      db.raw(`
+        CASE WHEN participante.grupo_id IS NOT NULL
+        THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
+        ELSE NULL END as grupo
+      `),
+      // Booleano derivado: tiene checkin = está acreditado
+      db.raw('(checkin.id IS NOT NULL) as acreditado')
+    );
 
-  if (filtros.grupoId) query.andWhere({ grupo_id: filtros.grupoId });
-  if (filtros.rolGrupo) query.andWhere({ rol_grupo: filtros.rolGrupo });
-  if (filtros.estadoPago) query.andWhere({ estado_pago: filtros.estadoPago });
-  if (filtros.estadoVinculo) query.andWhere({ estado_vinculo: filtros.estadoVinculo });
+  if (filtros.grupoId) query.andWhere('participante.grupo_id', filtros.grupoId);
+  if (filtros.rolGrupo) query.andWhere('participante.rol_grupo', filtros.rolGrupo);
+  if (filtros.estadoPago) query.andWhere('participante.estado_pago', filtros.estadoPago);
+  if (filtros.estadoVinculo) query.andWhere('participante.estado_vinculo', filtros.estadoVinculo);
 
-  return query.orderBy('creado_en', 'asc');
+  return query.orderBy('participante.creado_en', 'asc');
 }
 
 /**
@@ -90,4 +108,5 @@ module.exports = {
   actualizar,
   eliminar,
   buscarPorQr,
+  buscarPorEmailEnEvento
 };

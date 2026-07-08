@@ -11,43 +11,36 @@ const {
   actualizarEstadoVinculoSchema,
 } = require('../schemas/participantes.schema');
 
-// Router anidado: GET /eventos/:eventoId/participantes
+// Router anidado: GET /eventos/:eventoId/participantes (requiere auth)
 const routerAnidado = express.Router({ mergeParams: true });
 routerAnidado.use(autenticar);
 routerAnidado.use(resolverOrganizacionActiva);
 routerAnidado.get('/:eventoId/participantes', participantesController.listar);
 
-// Router plano: el resto de operaciones sobre /participantes
-const routerPlano = express.Router();
-routerPlano.use(autenticar);
-routerPlano.use(resolverOrganizacionActiva);
-
-routerPlano.post(
+// Router público: solo POST / (inscripción externa, sin auth)
+const routerPublico = express.Router();
+routerPublico.post(
   '/',
   validate(crearParticipanteSchema),
   participantesController.crear
 );
 
+// Router plano: resto de operaciones (requieren auth)
+const routerPlano = express.Router();
+routerPlano.use(autenticar);
+routerPlano.use(resolverOrganizacionActiva);
 routerPlano.get('/:id', validate(idParamSchema), participantesController.obtener);
-
-routerPlano.patch(
-  '/:id',
-  validate(editarParticipanteSchema),
-  participantesController.editar
-);
-
+routerPlano.patch('/:id', validate(editarParticipanteSchema), participantesController.editar);
 routerPlano.delete('/:id', validate(idParamSchema), participantesController.eliminar);
-
 routerPlano.patch(
   '/:id/vinculo',
   validate(actualizarEstadoVinculoSchema),
   participantesController.actualizarEstadoVinculo
 );
-
 routerPlano.get(
   '/:id/ultima-ubicacion',
   validate(idParamSchema),
   participantesController.obtenerUltimaUbicacion
 );
 
-module.exports = { routerAnidado, routerPlano };
+module.exports = { routerAnidado, routerPublico, routerPlano };

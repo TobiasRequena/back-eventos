@@ -34,7 +34,7 @@ function calcularEsMayor(nacimiento) {
  * Recibe los campos del evento (array de campo_form) y el objeto de respuestas
  * { [campo_form_id]: valor } que mandó el front.
  */
-function validarRespuestasForm(campos, respuestas) {
+function validarRespuestasForm(campos, respuestas = {}) {
   const errores = [];
 
   for (const campo of campos) {
@@ -98,18 +98,16 @@ function validarRespuestasForm(campos, respuestas) {
  */
 async function crearParticipante(orgId, datos) {
   return db.transaction(async (trx) => {
-    // 1. Verificar que el evento existe y pertenece a la org
+    // 1. Verificar que el evento existe
     const evento = await eventosRepository.buscarPorId(datos.eventoId, trx);
     if (!evento) {
       const error = new Error('Evento no encontrado');
       error.status = 404;
       throw error;
     }
-    if (evento.org_id !== orgId) {
-      const error = new Error('No tenés permisos sobre este evento');
-      error.status = 403;
-      throw error;
-    }
+
+    // Si no viene orgId (inscripción pública sin X-Org-Id), lo tomamos del evento
+    const orgIdFinal = orgId ?? evento.org_id;
 
     // 2. Verificar DNI único en el evento
     const duplicado = await participantesRepository.buscarPorDniEnEvento(
@@ -123,33 +121,44 @@ async function crearParticipante(orgId, datos) {
       throw error;
     }
 
-    // 3. Calcular mayoría de edad
+    // 3. Verificar email único en el evento
+    const duplicadoEmail = await participantesRepository.buscarPorEmailEnEvento(
+      datos.email,
+      datos.eventoId,
+      trx
+    );
+    if (duplicadoEmail) {
+      const error = new Error('Ya existe un participante con ese email en este evento');
+      error.status = 409;
+      throw error;
+    }
+
+    // 4. Calcular mayoría de edad
     const esMayor = calcularEsMayor(datos.nacimiento);
 
-    // 4. Validar respuestas del formulario contra los campos del evento
+    // 5. Validar respuestas del formulario
     const campos = await formulariosRepository.listarPorEvento(datos.eventoId);
-    if (campos.length > 0) {
+    console.log('campos resultado:', campos);
+    console.log('tipo:', typeof campos, Array.isArray(campos));
+    if (campos && campos.length > 0) {
       validarRespuestasForm(campos, datos.respuestasForm ?? {});
     }
 
-    // 5. Determinar estado de pago inicial
+    // 6. Determinar estado de pago inicial
     const estadoPago = evento.costo > 0 ? 'pendiente' : 'no_aplica';
 
-    // 6. Determinar estado_vinculo según rol
-    // Solo los autoinscriptos a un grupo arrancan en 'pendiente' —
-    // esperan aprobación del responsable (RN04).
-    // Los demás roles no tienen estado de vínculo.
+    // 7. Determinar estado_vinculo según rol
     let estadoVinculo = null;
     if (datos.rolGrupo === 'autoinscripto') {
       estadoVinculo = 'pendiente';
     }
 
-    // 7. Generar QR personal único
+    // 8. Generar QR personal único
     const qrPersonal = uuidv4();
 
     const participante = await participantesRepository.crear(
       {
-        orgId,
+        orgId: orgIdFinal,
         eventoId: datos.eventoId,
         grupoId: datos.grupoId,
         nombre: datos.nombre,

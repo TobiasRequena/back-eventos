@@ -167,12 +167,8 @@ async function obtenerEvento(id, orgId) {
  * de pertenencia antes de actualizar.
  */
 async function editarEvento(id, orgId, datos) {
-  const evento = await obtenerEvento(id, orgId); // ya valida existencia + pertenencia
+  const evento = await obtenerEvento(id, orgId);
 
-  // Si se manda fechaInicio o fechaFin (una sola, no las dos), hay que
-  // validar el CHECK (fecha_fin >= fecha_inicio) contra el valor que
-  // NO se está actualizando, porque la DB va a aplicar el CHECK sobre
-  // la fila completa después del UPDATE.
   const fechaInicioFinal = datos.fechaInicio ?? evento.fecha_inicio;
   const fechaFinFinal = datos.fechaFin ?? evento.fecha_fin;
 
@@ -182,9 +178,21 @@ async function editarEvento(id, orgId, datos) {
     throw error;
   }
 
+  // Si se manda un código nuevo, validar que esté disponible
+  // (no lo use otro evento vigente distinto a este)
+  if (datos.codigo && datos.codigo !== evento.codigo) {
+    const eventoConEseCodigo = await eventosRepository.buscarActivoPorCodigo(datos.codigo);
+    if (eventoConEseCodigo && eventoConEseCodigo.id !== id) {
+      const error = new Error('Ese código ya está en uso por un evento vigente');
+      error.status = 409;
+      throw error;
+    }
+  }
+
   const datosDb = {};
   if (datos.nombre !== undefined) datosDb.nombre = datos.nombre;
   if (datos.descripcion !== undefined) datosDb.descripcion = datos.descripcion;
+  if (datos.codigo !== undefined) datosDb.codigo = datos.codigo;
   if (datos.fechaInicio !== undefined) datosDb.fecha_inicio = datos.fechaInicio;
   if (datos.fechaFin !== undefined) datosDb.fecha_fin = datos.fechaFin;
   if (datos.politicaMenor !== undefined) datosDb.politica_menor = datos.politicaMenor;
@@ -222,7 +230,22 @@ async function buscarPorCodigoPublico(codigo) {
     throw error;
   }
 
-  return evento;
+  // Traemos camposForm y bloquesTaller igual que en obtenerEvento,
+  // porque el formulario de inscripción necesita esos datos para renderizarse.
+  // No traemos cantidadInscriptos ni imagenUrl porque este endpoint es público
+  // y no necesita esos datos para el flujo de inscripción.
+  const [camposForm, bloquesTaller, portada] = await Promise.all([
+    formulariosRepository.listarPorEvento(evento.id),
+    talleresRepository.listarBloquesPorEvento(evento.id),
+    archivosRepository.buscarPortadaDeEvento(evento.id),
+  ]);
+
+  return {
+    ...evento,
+    imagenUrl: portada ? construirUrlPublica(portada.key) : null,
+    camposForm,
+    bloquesTaller,
+  };
 }
 
 /**
@@ -236,7 +259,147 @@ async function buscarPorCodigoPublico(codigo) {
  */
 async function verificarDisponibilidadCodigo(codigo) {
   const eventoExistente = await eventosRepository.buscarActivoPorCodigo(codigo);
-  return { disponible: !eventoExistente };
+  return { disponible: !eventoExistente, eventoId: eventoExistente?.id || null };
+}
+
+/**
+ * Calcula los KPIs del evento para el dashboard de administración.
+ *
+ * La parte más interesante es camposFormStats: como respuestas_form es un
+ * JSONB en cada fila de participante (no una tabla separada), no podemos
+ * hacer un GROUP BY directo en SQL. En cambio, traemos todas las respuestas
+ * en memoria y las agrupamos con JavaScript.
+ *
+ * Esto es aceptable para el volumen esperado (hasta 15.000 inscriptos),
+ * pero si en algún momento se vuelve lento, se puede migrar a una query
+ * SQL con jsonb_each() de PostgreSQL que hace el grouping en la DB.
+ */
+async function obtenerStats(id, orgId) {
+  // Verificamos pertenencia (reutilizamos la validación de obtenerEvento
+  // sin traer todo el detalle — solo necesitamos saber que el evento existe
+  // y es de esta org antes de hacer las queries de stats).
+  const evento = await eventosRepository.buscarPorId(id);
+  if (!evento) {
+    const error = new Error('Evento no encontrado');
+    error.status = 404;
+    throw error;
+  }
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento');
+    error.status = 403;
+    throw error;
+  }
+
+  // Traemos todo lo que necesitamos en paralelo
+  const [totalInscriptos, bloques, campos, filas] = await Promise.all([
+    eventosRepository.contarInscriptos(id),
+    talleresRepository.listarBloquesPorEvento(id),
+    formulariosRepository.listarPorEvento(id),
+    eventosRepository.listarRespuestasForm(id),
+  ]);
+
+  // Calcular inscriptos por taller
+  const bloquesConStats = await Promise.all(
+    bloques.map(async (bloque) => ({
+      id: bloque.id,
+      nombre: bloque.nombre,
+      cantidad_elegible: bloque.cantidad_elegible,
+      es_obligatorio: bloque.es_obligatorio,
+      talleres: await Promise.all(
+        bloque.talleres.map(async (taller) => ({
+          id: taller.id,
+          nombre: taller.nombre,
+          capacidad: taller.capacidad,
+          inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
+        }))
+      ),
+    }))
+  );
+
+  // Agrupar respuestas de campos de formulario en memoria
+  // Solo mostramos stats de campos de tipo seleccion, booleano y texto —
+  // fecha y numero tienen demasiada variabilidad para ser útiles agrupados.
+  const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
+
+  const camposFormStats = campos
+    .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
+    .map((campo) => {
+      // Recolectamos todos los valores no vacíos para este campo
+      const valores = [];
+      for (const fila of filas) {
+        const respuestas = fila.respuestas_form || {};
+        const valor = respuestas[campo.id];
+        if (valor === undefined || valor === null || valor === '') continue;
+        valores.push(valor);
+      }
+
+      const totalRespuestas = valores.length;
+      let stats = {};
+
+      switch (campo.tipo) {
+        case 'seleccion':
+        case 'booleano': {
+          // Agrupa por valor y cuenta frecuencia, ordenado desc
+          const conteo = {};
+          for (const v of valores) {
+            const clave = String(v);
+            conteo[clave] = (conteo[clave] || 0) + 1;
+          }
+          stats.respuestasPopulares = Object.entries(conteo)
+            .map(([valor, cantidad]) => ({ valor, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+          break;
+        }
+
+        case 'texto': {
+          // Top 5 respuestas más frecuentes (útil si hay respuestas comunes)
+          // + total de respuestas no vacías
+          const conteo = {};
+          for (const v of valores) {
+            const clave = String(v).trim().toLowerCase();
+            conteo[clave] = (conteo[clave] || 0) + 1;
+          }
+          stats.respuestasFrecuentes = Object.entries(conteo)
+            .map(([valor, cantidad]) => ({ valor, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad)
+            .slice(0, 5);
+          break;
+        }
+
+        case 'numero': {
+          const nums = valores.map(Number).filter((n) => !isNaN(n));
+          if (nums.length > 0) {
+            stats.promedio = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
+            stats.minimo = Math.min(...nums);
+            stats.maximo = Math.max(...nums);
+          }
+          break;
+        }
+
+        case 'fecha': {
+          const fechas = valores.map((v) => new Date(v)).filter((d) => !isNaN(d));
+          if (fechas.length > 0) {
+            stats.minimo = new Date(Math.min(...fechas)).toISOString().split('T')[0];
+            stats.maximo = new Date(Math.max(...fechas)).toISOString().split('T')[0];
+          }
+          break;
+        }
+      }
+
+      return {
+        id: campo.id,
+        etiqueta: campo.etiqueta,
+        tipo: campo.tipo,
+        totalRespuestas,
+        ...stats,
+      };
+    });
+
+  return {
+    totalInscriptos,
+    bloquesTaller: bloquesConStats,
+    camposFormStats,
+  };
 }
 
 module.exports = {
@@ -247,4 +410,5 @@ module.exports = {
   eliminarEvento,
   buscarPorCodigoPublico,
   verificarDisponibilidadCodigo,
+  obtenerStats
 };

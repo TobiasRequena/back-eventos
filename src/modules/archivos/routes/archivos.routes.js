@@ -7,12 +7,18 @@ const autenticar = require('../../../middlewares/autenticar');
 const upload = require('../../../middlewares/upload');
 const { subirArchivoSchema, idParamSchema } = require('../schemas/archivos.schema');
 
-// POST requiere autenticación para subir portada de evento (lo hace un Admin).
-// El día que se implemente "comprobante subido por participante sin cuenta",
-// vamos a necesitar otra ruta pública separada — por ahora, todo pasa por acá autenticado.
+// POST portada_evento — requiere auth (lo sube el admin)
 router.post(
-  '/',
+  '/portada',
   autenticar,
+  upload.single('archivo'),
+  validate(subirArchivoSchema),
+  archivosController.subir
+);
+
+// POST comprobante_pago — público (lo sube el participante sin cuenta)
+router.post(
+  '/comprobante',
   upload.single('archivo'),
   validate(subirArchivoSchema),
   archivosController.subir

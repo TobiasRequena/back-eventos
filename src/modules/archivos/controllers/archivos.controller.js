@@ -13,6 +13,12 @@ async function subir(req, res, next) {
       throw error;
     }
 
+    // El contexto se infiere de la ruta, no del body —
+    // así evitamos que alguien use el endpoint público para subir portadas.
+    const contexto = req.path.includes('comprobante')
+      ? 'comprobante_pago'
+      : 'portada_evento';
+
     const resultado = await archivosService.subirArchivo(
       req.file.buffer,
       {
@@ -21,7 +27,7 @@ async function subir(req, res, next) {
         size: req.file.size,
       },
       {
-        contexto: req.body.contexto,
+        contexto,
         orgId: req.body.orgId,
         eventoId: req.body.eventoId,
         participanteId: req.body.participanteId,
