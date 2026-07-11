@@ -57,28 +57,45 @@ async function contarPorEvento(eventoId, trx = db) {
 }
 
 async function crear(datos, trx = db) {
-  const [participante] = await trx('participante')
-    .insert({
-      org_id: datos.orgId,
-      evento_id: datos.eventoId,
-      grupo_id: datos.grupoId ?? null,
-      nombre: datos.nombre,
-      apellido: datos.apellido,
-      email: datos.email,
-      dni: datos.dni,
-      nacimiento: datos.nacimiento,
-      es_mayor: datos.esMayor,
-      rol_grupo: datos.rolGrupo,
-      estado_vinculo: datos.estadoVinculo ?? null,
-      responsable_id: datos.responsableId ?? null,
-      respuestas_form: JSON.stringify(datos.respuestasForm ?? {}),
-      estado_pago: datos.estadoPago ?? 'no_aplica',
-      pagado_por: datos.pagadoPor ?? null,
-      qr_personal: datos.qrPersonal,
-    })
-    .returning('*');
+  try {
+    const [participante] = await trx('participante')
+      .insert({
+        org_id: datos.orgId,
+        evento_id: datos.eventoId,
+        grupo_id: datos.grupoId ?? null,
+        nombre: datos.nombre,
+        apellido: datos.apellido,
+        email: datos.email,
+        dni: datos.dni,
+        nacimiento: datos.nacimiento,
+        es_mayor: datos.esMayor,
+        rol_grupo: datos.rolGrupo,
+        estado_vinculo: datos.estadoVinculo ?? null,
+        responsable_id: datos.responsableId ?? null,
+        respuestas_form: JSON.stringify(datos.respuestasForm ?? {}),
+        estado_pago: datos.estadoPago ?? 'no_aplica',
+        pagado_por: datos.pagadoPor ?? null,
+        qr_personal: datos.qrPersonal,
+      })
+      .returning('*');
 
-  return participante;
+    return participante;
+  } catch (err) {
+    // Atrapar violación de UNIQUE de PostgreSQL (código 23505)
+    // y convertirla en un error de negocio claro
+    if (err.code === '23505') {
+      if (err.constraint === 'uq_participante_dni_evento') {
+        const error = new Error('Ya existe un participante con ese DNI en este evento');
+        error.status = 409;
+        throw error;
+      }
+      // Por si en el futuro hay otros UNIQUE constraints en participante
+      const error = new Error('Ya existe un registro con esos datos');
+      error.status = 409;
+      throw error;
+    }
+    throw err; // cualquier otro error de DB lo dejamos pasar normal
+  }
 }
 
 async function actualizar(id, datos, trx = db) {

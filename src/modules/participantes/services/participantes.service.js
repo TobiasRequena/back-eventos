@@ -3,6 +3,17 @@ const { db } = require('../../../config/db');
 const participantesRepository = require('../repositories/participantes.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
+const talleresRepository = require('../../talleres/repositories/talleres.repository');
+
+const { enviarMail } = require('../../../utils/mail');
+const {
+  templateConfirmacionInscripcion,
+  templateSolicitudPendiente,
+  templateVinculoAceptado,
+  templateVinculoRechazado,
+} = require('../../../utils/mailTemplates');
+const gruposRepository = require('../../grupos/repositories/grupos.repository');
+
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -138,8 +149,6 @@ async function crearParticipante(orgId, datos) {
 
     // 5. Validar respuestas del formulario
     const campos = await formulariosRepository.listarPorEvento(datos.eventoId);
-    console.log('campos resultado:', campos);
-    console.log('tipo:', typeof campos, Array.isArray(campos));
     if (campos && campos.length > 0) {
       validarRespuestasForm(campos, datos.respuestasForm ?? {});
     }
@@ -176,6 +185,74 @@ async function crearParticipante(orgId, datos) {
       },
       trx
     );
+
+    // 9. Inscribir a los talleres elegidos (si vinieron)
+    if (datos.tallerIds && datos.tallerIds.length > 0) {
+      for (const tallerId of datos.tallerIds) {
+        // Verificar que el taller existe y pertenece al mismo evento
+        const taller = await talleresRepository.buscarPorId(tallerId, trx);
+        if (!taller) {
+          const error = new Error(`Taller ${tallerId} no encontrado`);
+          error.status = 404;
+          throw error;
+        }
+        if (taller.evento_id !== datos.eventoId) {
+          const error = new Error(`El taller ${tallerId} no pertenece a este evento`);
+          error.status = 400;
+          throw error;
+        }
+
+        // Verificar cupo
+        if (taller.capacidad !== null) {
+          const inscriptos = await talleresRepository.contarInscriptos(tallerId, trx);
+          if (inscriptos >= taller.capacidad) {
+            const error = new Error(`El taller "${taller.nombre}" ya alcanzó su capacidad máxima`);
+            error.status = 409;
+            throw error;
+          }
+        }
+
+        // Verificar cantidad_elegible del bloque
+        const bloque = await talleresRepository.buscarBloquePorId(taller.bloque_taller_id, trx);
+        const yaElegidos = await talleresRepository.contarInscripcionesDelParticipanteEnBloque(
+          participante.id,
+          bloque.id,
+          trx
+        );
+        if (yaElegidos >= bloque.cantidad_elegible) {
+          const error = new Error(
+            `Ya elegiste el máximo de talleres permitidos para el bloque "${bloque.nombre}" (${bloque.cantidad_elegible})`
+          );
+          error.status = 409;
+          throw error;
+        }
+
+        await talleresRepository.asignarParticipante(
+          { participanteId: participante.id, tallerId, orgId: orgIdFinal },
+          trx
+        );
+      }
+    }
+
+    // 10. Enviar mail de confirmación (no bloqueante — si falla, no afecta la inscripción)
+    const { subject, html } = templateConfirmacionInscripcion({ participante, evento });
+    enviarMail({ to: participante.email, subject, html }); // sin await — fire and forget
+
+    // 11. Si es autoinscripto, notificar al responsable del grupo
+    if (datos.rolGrupo === 'autoinscripto' && datos.grupoId) {
+      const grupo = await gruposRepository.buscarPorId(datos.grupoId, trx);
+      if (grupo?.responsable_id) {
+        const responsable = await participantesRepository.buscarPorId(grupo.responsable_id, trx);
+        if (responsable) {
+          const { subject: subjectResp, html: htmlResp } = templateSolicitudPendiente({
+            responsable,
+            participante,
+            grupo,
+          });
+          enviarMail({ to: responsable.email, subject: subjectResp, html: htmlResp }); // sin await
+        }
+      }
+    }
 
     return participante;
   });
@@ -275,7 +352,21 @@ async function actualizarEstadoVinculo(id, orgId, estado) {
     throw error;
   }
 
-  return participantesRepository.actualizar(id, { estado_vinculo: estado });
+  const actualizado = await participantesRepository.actualizar(id, { estado_vinculo: estado });
+
+  // Notificar al participante del resultado
+  const grupo = await gruposRepository.buscarPorId(participante.grupo_id);
+  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+
+  if (grupo && evento) {
+    const template = estado === 'aceptado'
+      ? templateVinculoAceptado({ participante, grupo, evento })
+      : templateVinculoRechazado({ participante, grupo, evento });
+
+    enviarMail({ to: participante.email, ...template }); // sin await
+  }
+
+  return actualizado;
 }
 
 /**

@@ -2,7 +2,7 @@ const gruposService = require('../services/grupos.service');
 
 async function crear(req, res, next) {
   try {
-    const grupo = await gruposService.crearGrupo(req.orgId, req.body);
+    const grupo = await gruposService.crearGrupo(req.orgId ?? null, req.body);
     res.status(201).json({ grupo });
   } catch (error) {
     next(error);

@@ -11,26 +11,29 @@ const {
   codigoParamSchema,
 } = require('../schemas/grupos.schema');
 
-// Endpoint público — resuelve el código de invitación sin necesitar auth
-// Va ANTES de los middlewares de autenticación
+// Router público — sin auth
 const routerPublico = express.Router();
 routerPublico.get(
   '/invitacion/:codigoInv',
   validate(codigoParamSchema),
   gruposController.resolverInvitacion
 );
+routerPublico.post(
+  '/',
+  validate(crearGrupoSchema),
+  gruposController.crear
+);
 
-// Router anidado: GET /eventos/:eventoId/grupos
+// Router anidado: GET /eventos/:eventoId/grupos (requiere auth)
 const routerAnidado = express.Router({ mergeParams: true });
 routerAnidado.use(autenticar);
 routerAnidado.use(resolverOrganizacionActiva);
 routerAnidado.get('/:eventoId/grupos', gruposController.listar);
 
-// Router plano: el resto de operaciones sobre /grupos
+// Router plano: resto de operaciones (requieren auth)
 const routerPlano = express.Router();
 routerPlano.use(autenticar);
 routerPlano.use(resolverOrganizacionActiva);
-routerPlano.post('/', validate(crearGrupoSchema), gruposController.crear);
 routerPlano.get('/:id', validate(idParamSchema), gruposController.obtener);
 routerPlano.patch('/:id', validate(editarGrupoSchema), gruposController.editar);
 routerPlano.delete('/:id', validate(idParamSchema), gruposController.eliminar);

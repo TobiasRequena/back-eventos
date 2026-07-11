@@ -16,9 +16,9 @@ function generarCodigoInv() {
  * Arma la URL del QR de invitación — la que el front va a encodear
  * como imagen QR para que los participantes la escaneen.
  */
-function armarUrlQr(eventoId, codigoInv) {
+function armarUrlQr(codigoEvento, codigoInv) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  return `${frontendUrl}/inscribirse/${eventoId}?grupo=${codigoInv}`;
+  return `${frontendUrl}/inscribirse/${codigoEvento}?grupo=${codigoInv}`;
 }
 
 /**
@@ -33,14 +33,13 @@ function armarUrlQr(eventoId, codigoInv) {
  */
 async function crearGrupo(orgId, datos) {
   return db.transaction(async (trx) => {
-    // 1. Verificar evento
     const evento = await eventosRepository.buscarPorId(datos.eventoId, trx);
     if (!evento) {
       const error = new Error('Evento no encontrado');
       error.status = 404;
       throw error;
     }
-    if (evento.org_id !== orgId) {
+    if (evento.org_id !== orgId && orgId !== null) {
       const error = new Error('No tenés permisos sobre este evento');
       error.status = 403;
       throw error;
@@ -51,7 +50,8 @@ async function crearGrupo(orgId, datos) {
       throw error;
     }
 
-    // 2. Verificar responsable
+    const orgIdFinal = orgId ?? evento.org_id;
+
     const responsable = await participantesRepository.buscarPorId(datos.responsableId, trx);
     if (!responsable) {
       const error = new Error('El responsable indicado no existe como participante');
@@ -71,12 +71,12 @@ async function crearGrupo(orgId, datos) {
 
     // 3. Generar código único
     const codigoInv = generarCodigoInv();
-    const qrInv = armarUrlQr(datos.eventoId, codigoInv);
+    const qrInv = armarUrlQr(evento.codigo, codigoInv);
 
     // 4. Crear el grupo
     const grupo = await gruposRepository.crear(
       {
-        orgId,
+        orgId: orgIdFinal,
         eventoId: datos.eventoId,
         responsableId: datos.responsableId,
         nombre: datos.nombre,

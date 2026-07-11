@@ -28,6 +28,8 @@ const crearParticipanteSchema = z.object({
     responsableId: z.string().uuid().nullable().optional(),
     // solo si es menor vinculado a un responsable
 
+    tallerIds: z.array(z.string().uuid()).optional().default([]),
+
     // Respuestas al formulario dinámico del evento
     // Objeto libre: { [campo_form_id]: valor }
     // La validación profunda (tipos, requeridos, opciones) la hace el service
