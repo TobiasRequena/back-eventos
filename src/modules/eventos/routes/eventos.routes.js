@@ -42,5 +42,6 @@ router.get('/:id', validate(idParamSchema), eventosController.obtener);
 router.patch('/:id', validate(editarEventoSchema), eventosController.editar);
 router.delete('/:id', validate(idParamSchema), eventosController.eliminar);
 router.get('/:id/stats', validate(idParamSchema), eventosController.stats);
+router.get('/:id/inscriptos/excel', validate(idParamSchema), eventosController.descargarExcel);
 
 module.exports = router;

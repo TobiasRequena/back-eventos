@@ -103,4 +103,20 @@ async function stats(req, res, next) {
   }
 }
 
-module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats };
+async function descargarExcel(req, res, next) {
+  try {
+    const { buffer, nombreArchivo } = await eventosService.generarExcelInscriptos(
+      req.params.id,
+      req.orgId
+    );
+
+    // Headers para que el navegador descargue el archivo
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats, descargarExcel };

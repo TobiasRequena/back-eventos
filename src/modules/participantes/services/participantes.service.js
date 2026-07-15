@@ -311,6 +311,8 @@ async function editarParticipante(id, orgId, datos) {
   if (datos.nombre !== undefined) datosDb.nombre = datos.nombre;
   if (datos.apellido !== undefined) datosDb.apellido = datos.apellido;
   if (datos.email !== undefined) datosDb.email = datos.email;
+  if (datos.estadoPago !== undefined) datosDb.estado_pago = datos.estadoPago;
+  if (datos.pagadoPor !== undefined) datosDb.pagado_por = datos.pagadoPor;
   if (datos.respuestasForm !== undefined) {
     datosDb.respuestas_form = JSON.stringify(datos.respuestasForm);
   }

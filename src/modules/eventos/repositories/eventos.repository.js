@@ -114,6 +114,50 @@ async function listarRespuestasForm(eventoId) {
     .select('respuestas_form');
 }
 
+/**
+ * Trae todos los participantes de un evento con grupo, talleres asignados
+ * y estado de acreditación — todo en una sola query con JOINs.
+ */
+async function listarInscriptosCompleto(eventoId) {
+  // Participantes con grupo y acreditación
+  const participantes = await db('participante')
+    .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
+    .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .where('participante.evento_id', eventoId)
+    .select(
+      'participante.*',
+      'grupo.nombre as grupo_nombre',
+      db.raw('(checkin.id IS NOT NULL) as acreditado')
+    )
+    .orderBy('participante.apellido', 'asc');
+
+  // Talleres asignados por participante
+  const asignaciones = await db('participante_taller')
+    .join('taller', 'taller.id', 'participante_taller.taller_id')
+    .whereIn(
+      'participante_taller.participante_id',
+      participantes.map((p) => p.id)
+    )
+    .select(
+      'participante_taller.participante_id',
+      'taller.nombre as taller_nombre'
+    );
+
+  // Agrupamos los talleres por participante en memoria
+  const talleresPorParticipante = {};
+  for (const a of asignaciones) {
+    if (!talleresPorParticipante[a.participante_id]) {
+      talleresPorParticipante[a.participante_id] = [];
+    }
+    talleresPorParticipante[a.participante_id].push(a.taller_nombre);
+  }
+
+  return participantes.map((p) => ({
+    ...p,
+    talleres: talleresPorParticipante[p.id] ?? [],
+  }));
+}
+
 module.exports = {
   contarPorOrganizacion,
   buscarActivoPorCodigo,
@@ -125,4 +169,5 @@ module.exports = {
   contarInscriptos,
   contarInscriptosPorTaller,
   listarRespuestasForm,
+  listarInscriptosCompleto,
 };

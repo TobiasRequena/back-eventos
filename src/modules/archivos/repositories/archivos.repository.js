@@ -47,4 +47,11 @@ async function eliminar(id, trx = db) {
   return trx('archivo').where({ id }).del();
 }
 
-module.exports = { crear, buscarPorId, buscarPortadaDeEvento, eliminar };
+async function buscarComprobantePorParticipante(participanteId) {
+  return db('archivo')
+    .where({ participante_id: participanteId })
+    .orderBy('creado_en', 'desc')
+    .first();
+}
+
+module.exports = { crear, buscarPorId, buscarPortadaDeEvento, eliminar, buscarComprobantePorParticipante };

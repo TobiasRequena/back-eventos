@@ -42,5 +42,6 @@ routerPlano.get(
   validate(idParamSchema),
   participantesController.obtenerUltimaUbicacion
 );
+routerPlano.get('/:id/comprobante', validate(idParamSchema), participantesController.obtenerComprobante);
 
 module.exports = { routerAnidado, routerPublico, routerPlano };

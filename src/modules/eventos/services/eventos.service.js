@@ -1,3 +1,4 @@
+const ExcelJS = require('exceljs');
 const { db } = require('../../../config/db');
 const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
@@ -402,6 +403,154 @@ async function obtenerStats(id, orgId) {
   };
 }
 
+async function generarExcelInscriptos(id, orgId) {
+  const evento = await eventosRepository.buscarPorId(id);
+
+  if (!evento) {
+    const error = new Error('Evento no encontrado');
+    error.status = 404;
+    throw error;
+  }
+
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento');
+    error.status = 403;
+    throw error;
+  }
+
+  const campos = await formulariosRepository.listarPorEvento(id);
+  const participantes = await eventosRepository.listarInscriptosCompleto(id);
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Mi aplicación';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Inscriptos');
+
+  const COL_START = 2; // B
+  const HEADER_ROW = 2;
+  const DATA_START_ROW = 3;
+
+  // Columna A vacía (espaciadora) + columnas reales desde B
+  const columnasReales = [
+    { header: 'Apellido', key: 'apellido' },
+    { header: 'Nombre', key: 'nombre' },
+    { header: 'DNI', key: 'dni' },
+    { header: 'Email', key: 'email' },
+    { header: 'Fecha de nacimiento', key: 'nacimiento' },
+    { header: 'Es mayor', key: 'es_mayor' },
+    { header: 'Estado de pago', key: 'estado_pago' },
+    { header: 'Grupo', key: 'grupo_nombre' },
+    { header: 'Acreditado', key: 'acreditado' },
+    { header: 'Talleres', key: 'talleres' },
+    ...campos.map((c) => ({ header: c.etiqueta, key: `campo_${c.id}` })),
+  ];
+
+  sheet.columns = [
+    { key: '_spacer', width: 3 },
+    ...columnasReales.map(({ key }) => ({ key })),
+  ];
+
+  sheet.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
+
+  const lastCol = COL_START + columnasReales.length - 1;
+  const lastRow = participantes.length
+    ? DATA_START_ROW + participantes.length - 1
+    : HEADER_ROW;
+
+  sheet.autoFilter = {
+    from: { row: HEADER_ROW, column: COL_START },
+    to: { row: HEADER_ROW, column: lastCol },
+  };
+
+  const BORDE = { style: 'thin', color: { argb: 'FF000000' } };
+  const BORDE_GRUESO = { style: 'medium', color: { argb: 'FF000000' } };
+
+  // ===== HEADER (fila 2) =====
+  columnasReales.forEach((col, i) => {
+    const cell = sheet.getCell(HEADER_ROW, COL_START + i);
+    cell.value = col.header;
+    cell.font = { bold: true };
+    cell.border = { top: BORDE, left: BORDE, right: BORDE, bottom: BORDE };
+  });
+
+  // ===== DATOS (desde fila 3) =====
+  participantes.forEach((p, idx) => {
+    const respuestas = p.respuestas_form || {};
+    const rowNumber = DATA_START_ROW + idx;
+    const row = sheet.getRow(rowNumber);
+
+    const fila = {
+      apellido: p.apellido,
+      nombre: p.nombre,
+      dni: p.dni,
+      email: p.email,
+      nacimiento: p.nacimiento ? new Date(p.nacimiento) : null,
+      es_mayor: p.es_mayor ? 'Sí' : 'No',
+      estado_pago: p.estado_pago,
+      grupo_nombre: p.grupo_nombre ?? 'Individual',
+      acreditado: p.acreditado ? 'Sí' : 'No',
+      talleres: p.talleres.join(' / '),
+    };
+
+    for (const campo of campos) {
+      const valor = respuestas[campo.id];
+      fila[`campo_${campo.id}`] =
+        valor === true ? 'Sí' : valor === false ? 'No' : valor ?? '';
+    }
+
+    columnasReales.forEach((col, i) => {
+      const cell = row.getCell(COL_START + i);
+      cell.value = fila[col.key] ?? null;
+      cell.border = { left: BORDE, right: BORDE };
+      if (rowNumber % 2 === 0) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      }
+    });
+  });
+
+  sheet.getColumn(COL_START + 4).numFmt = 'dd/mm/yyyy'; // columna "nacimiento"
+
+  // ===== ANCHO AUTOMÁTICO (solo columnas reales, desde B) =====
+  const MIN_WIDTH = 10;
+  const MAX_WIDTH = 55;
+
+  columnasReales.forEach((col, i) => {
+    const colIndex = COL_START + i;
+    let maxLen = col.header.length;
+
+    sheet.getColumn(colIndex).eachCell({ includeEmpty: false }, (cell, rowNumber) => {
+      if (rowNumber === HEADER_ROW) return;
+      const valor = cell.value;
+      const largo = valor instanceof Date ? 10 : String(valor ?? '').length;
+      if (largo > maxLen) maxLen = largo;
+    });
+
+    sheet.getColumn(colIndex).width = Math.min(Math.max(maxLen + 4, MIN_WIDTH), MAX_WIDTH);
+  });
+
+  // ===== BORDE GRUESO PERIMETRAL =====
+  for (let r = HEADER_ROW; r <= lastRow; r++) {
+    for (let c = COL_START; c <= lastCol; c++) {
+      const cell = sheet.getCell(r, c);
+      const actual = cell.border || {};
+      cell.border = {
+        top: r === HEADER_ROW ? BORDE_GRUESO : actual.top,
+        bottom: r === lastRow ? BORDE_GRUESO : actual.bottom,
+        left: c === COL_START ? BORDE_GRUESO : actual.left,
+        right: c === lastCol ? BORDE_GRUESO : actual.right,
+      };
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  return {
+    buffer,
+    nombreArchivo: `inscriptos_${evento.codigo}.xlsx`,
+  };
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -410,5 +559,6 @@ module.exports = {
   eliminarEvento,
   buscarPorCodigoPublico,
   verificarDisponibilidadCodigo,
-  obtenerStats
+  obtenerStats,
+  generarExcelInscriptos,
 };

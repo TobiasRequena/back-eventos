@@ -120,6 +120,16 @@ async function desasignarParticipante(req, res, next) {
   }
 }
 
+async function contarInscriptos(req, res, next) {
+  try {
+    const taller = await talleresService.obtenerTaller(req.params.id, req.orgId);
+    const total = await talleresRepository.contarInscriptos(taller.id);
+    res.status(200).json({ total });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   crearBloque,
   listarBloques,
@@ -133,4 +143,5 @@ module.exports = {
   listarInscriptos,
   asignarParticipante,
   desasignarParticipante,
+  contarInscriptos
 };

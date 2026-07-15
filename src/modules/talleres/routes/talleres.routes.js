@@ -50,6 +50,7 @@ routerTalleresPlano.use(resolverOrganizacionActiva);
 routerTalleresPlano.get('/:id', validate(idParamSchema), talleresController.obtenerTaller);
 routerTalleresPlano.patch('/:id', validate(editarTallerSchema), talleresController.editarTaller);
 routerTalleresPlano.delete('/:id', validate(idParamSchema), talleresController.eliminarTaller);
+routerTalleresPlano.get('/:id/inscriptos/count', validate(idParamSchema), talleresController.contarInscriptos);
 routerTalleresPlano.get('/:id/inscriptos', validate(idParamSchema), talleresController.listarInscriptos);
 routerTalleresPlano.post(
   '/:id/inscriptos',
