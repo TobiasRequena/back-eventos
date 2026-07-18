@@ -551,6 +551,59 @@ async function generarExcelInscriptos(id, orgId) {
   };
 }
 
+async function obtenerStatsInscripciones(orgId, rango = '7d') {
+  // Parsear el rango
+  const dias = {
+    '7d': 7,
+    '14d': 14,
+    '30d': 30,
+  }[rango];
+
+  if (!dias) {
+    const error = new Error('Rango inválido. Usá 7d, 14d o 30d');
+    error.status = 400;
+    throw error;
+  }
+
+  const hoy = new Date();
+  const fechaFin = new Date(hoy);
+  fechaFin.setHours(23, 59, 59, 999);
+
+  const fechaInicio = new Date(hoy);
+  fechaInicio.setDate(fechaInicio.getDate() - (dias - 1));
+  fechaInicio.setHours(0, 0, 0, 0);
+
+  // Traer los días con inscripciones de la DB
+  const resultadosDb = await eventosRepository.contarInscripcionesPorDia(
+    orgId,
+    fechaInicio,
+    fechaFin
+  );
+
+  // Construir un mapa { 'YYYY-MM-DD': cantidad }
+  const mapaDb = {};
+  for (const fila of resultadosDb) {
+    const fecha = new Date(fila.fecha).toISOString().split('T')[0];
+    mapaDb[fecha] = Number(fila.inscripciones);
+  }
+
+  // Generar todos los días del rango, rellenando con 0 los que no tienen inscripciones
+  const datos = [];
+  let total = 0;
+
+  for (let i = dias - 1; i >= 0; i--) {
+    const fecha = new Date(hoy);
+    fecha.setDate(fecha.getDate() - i);
+    const fechaStr = fecha.toISOString().split('T')[0];
+    const inscripciones = mapaDb[fechaStr] ?? 0;
+
+    datos.push({ fecha: fechaStr, inscripciones });
+    total += inscripciones;
+  }
+
+  return { datos, total };
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -561,4 +614,5 @@ module.exports = {
   verificarDisponibilidadCodigo,
   obtenerStats,
   generarExcelInscriptos,
+  obtenerStatsInscripciones
 };

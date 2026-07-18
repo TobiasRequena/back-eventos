@@ -119,4 +119,14 @@ async function descargarExcel(req, res, next) {
   }
 }
 
-module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats, descargarExcel };
+async function statsInscripciones(req, res, next) {
+  try {
+    const { rango } = req.query;
+    const resultado = await eventosService.obtenerStatsInscripciones(req.orgId, rango);
+    res.status(200).json(resultado);
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats, descargarExcel, statsInscripciones };

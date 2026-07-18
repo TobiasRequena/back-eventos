@@ -3,6 +3,10 @@ const { db } = require('../../../config/db');
 const gruposRepository = require('../repositories/grupos.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
+const { enviarMail } = require('../../../utils/mail');
+const { templateInfoGrupoResponsable } = require('../../../utils/mailTemplates');
+const { generarCredencial } = require('../../../utils/generarCredencial');
+const QRCode = require('qrcode');
 
 /**
  * Genera el código de invitación — 8 caracteres alfanuméricos en mayúsculas,
@@ -97,6 +101,45 @@ async function crearGrupo(orgId, datos) {
       { grupo_id: grupo.id },
       trx
     );
+
+    // Generar QR de invitación del grupo como imagen adjunta
+    const qrBuffer = await QRCode.toBuffer(grupo.qr_inv, {
+      width: 300,
+      margin: 2,
+      color: { dark: '#1E3A5F', light: '#FFFFFF' },
+    });
+
+    // Generar credencial del responsable
+    const credencialBuffer = await generarCredencial({
+      qrPersonal: responsable.qr_personal,
+      nombreEvento: evento.nombre,
+      nombreParticipante: `${responsable.nombre} ${responsable.apellido}`,
+      dni: responsable.dni,
+    });
+
+    const { subject, html } = templateInfoGrupoResponsable({
+      responsable,
+      grupo,
+      evento,
+    });
+
+    enviarMail({
+      to: responsable.email,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: `qr_invitacion_${grupo.codigo_inv}.png`,
+          content: qrBuffer,
+          contentType: 'image/png',
+        },
+        {
+          filename: `credencial_${responsable.dni}.png`,
+          content: credencialBuffer,
+          contentType: 'image/png',
+        },
+      ],
+    }); // sin await
 
     return grupo;
   });

@@ -41,27 +41,14 @@ function templateConfirmacionInscripcion({ participante, evento }) {
 
         ${evento.costo > 0 ? `
         <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 16px; margin: 20px 0;">
-          <h2 style="margin-top: 0; font-size: 16px; color: #854d0e;">💳 Información de pago</h2>
-          <p style="margin: 4px 0;">El costo de inscripción es <strong>$${evento.costo}</strong>.</p>
-          ${evento.cbu_cvu ? `<p style="margin: 4px 0;"><strong>CBU/CVU:</strong> <code style="background: #fff; padding: 2px 6px; border-radius: 4px;">${evento.cbu_cvu}</code></p>` : ''}
-          ${evento.alias_cobro ? `<p style="margin: 4px 0;"><strong>Alias:</strong> <code style="background: #fff; padding: 2px 6px; border-radius: 4px;">${evento.alias_cobro}</code></p>` : ''}
-          <p style="margin: 8px 0 0; font-size: 13px; color: #713f12;">Una vez realizado el pago, subí el comprobante desde el portal de inscripción.</p>
+          <p style="margin: 0; color: #854d0e;">⚠️ Tu inscripción tiene un pago pendiente. El organizador del evento te va a contactar con los detalles.</p>
         </div>
         ` : ''}
 
         <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
-          <h2 style="margin-top: 0; font-size: 16px; color: #166534;">🎫 Tu código QR personal</h2>
-          <p style="color: #166534; font-size: 13px;">Presentá este código el día del evento para acreditarte.</p>
-          <div style="background: #fff; display: inline-block; padding: 12px; border-radius: 8px; margin-top: 8px;">
-            <img 
-              src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${participante.qr_personal}" 
-              alt="QR personal"
-              width="180" height="180"
-              style="display: block;"
-            />
-          </div>
-          <p style="margin: 8px 0 0; font-size: 12px; color: #6b7280;">
-            Código: <strong>${participante.qr_personal}</strong>
+          <h2 style="margin-top: 0; font-size: 16px; color: #166534;">🎫 Tu credencial de acceso</h2>
+          <p style="color: #166534; font-size: 13px;">
+            Encontrás tu credencial adjunta a este mail. Guardala y presentala el día del evento para acreditarte.
           </p>
         </div>
 
@@ -175,9 +162,70 @@ function templateSolicitudPendiente({ responsable, participante, grupo }) {
   };
 }
 
+function templateInfoGrupoResponsable({ responsable, grupo, evento }) {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  return {
+    subject: `👥 Información de tu grupo — ${evento.nombre}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+        
+        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+          ¡Tu grupo fue creado exitosamente!
+        </h1>
+
+        <p>Hola <strong>${responsable.nombre} ${responsable.apellido}</strong>,</p>
+        <p>Sos el referente del grupo <strong>${grupo.nombre}</strong> para el evento <strong>${evento.nombre}</strong>.</p>
+
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos del evento</h2>
+          <p style="margin: 4px 0;"><strong>Evento:</strong> ${evento.nombre}</p>
+          <p style="margin: 4px 0;"><strong>Fecha:</strong> ${fechaInicio}</p>
+        </div>
+
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos de tu grupo</h2>
+          <p style="margin: 4px 0;"><strong>Nombre:</strong> ${grupo.nombre}</p>
+          ${grupo.parroquia ? `<p style="margin: 4px 0;"><strong>Parroquia:</strong> ${grupo.parroquia}</p>` : ''}
+          ${grupo.localidad ? `<p style="margin: 4px 0;"><strong>Localidad:</strong> ${grupo.localidad}</p>` : ''}
+          <p style="margin: 4px 0;"><strong>Máximo de integrantes:</strong> ${grupo.max_integrantes}</p>
+        </div>
+
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h2 style="margin-top: 0; font-size: 16px; color: #1e40af;">🔗 Código de invitación</h2>
+          <p style="font-size: 13px; color: #1e40af;">Compartí este código con los integrantes de tu grupo para que puedan inscribirse:</p>
+          <div style="background: #fff; border-radius: 6px; padding: 12px; text-align: center; margin: 10px 0;">
+            <span style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #1e40af;">${grupo.codigo_inv}</span>
+          </div>
+          <p style="font-size: 12px; color: #6b7280; margin: 8px 0 0; text-align: center;">
+            O compartí este link directo:
+            <a href="${grupo.qr_inv}" style="color: #2563eb;">${grupo.qr_inv}</a>
+          </p>
+          <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0; text-align: center;">
+            El QR de invitación está adjunto a este mail.
+          </p>
+        </div>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente.
+        </p>
+
+      </body>
+      </html>
+    `,
+  };
+}
+
 module.exports = {
   templateConfirmacionInscripcion,
   templateVinculoAceptado,
   templateVinculoRechazado,
   templateSolicitudPendiente,
+  templateInfoGrupoResponsable,
 };

@@ -12,6 +12,7 @@ const {
   templateVinculoAceptado,
   templateVinculoRechazado,
 } = require('../../../utils/mailTemplates');
+const { generarCredencial } = require('../../../utils/generarCredencial');
 const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
 
@@ -154,7 +155,7 @@ async function crearParticipante(orgId, datos) {
     }
 
     // 6. Determinar estado de pago inicial
-    const estadoPago = evento.costo > 0 ? 'pendiente' : 'no_aplica';
+    const estadoPago = evento.costo > 0 ? datos.estadoPago : 'no_aplica';
 
     // 7. Determinar estado_vinculo según rol
     let estadoVinculo = null;
@@ -234,26 +235,27 @@ async function crearParticipante(orgId, datos) {
       }
     }
 
-    // 10. Enviar mail de confirmación (no bloqueante — si falla, no afecta la inscripción)
+    // 10. Generar credencial y enviar mail
+    const credencialBuffer = await generarCredencial({
+      qrPersonal: participante.qr_personal,
+      nombreEvento: evento.nombre,
+      nombreParticipante: `${participante.nombre} ${participante.apellido}`,
+      dni: participante.dni,
+    });
+
     const { subject, html } = templateConfirmacionInscripcion({ participante, evento });
-    enviarMail({ to: participante.email, subject, html }); // sin await — fire and forget
-
-    // 11. Si es autoinscripto, notificar al responsable del grupo
-    if (datos.rolGrupo === 'autoinscripto' && datos.grupoId) {
-      const grupo = await gruposRepository.buscarPorId(datos.grupoId, trx);
-      if (grupo?.responsable_id) {
-        const responsable = await participantesRepository.buscarPorId(grupo.responsable_id, trx);
-        if (responsable) {
-          const { subject: subjectResp, html: htmlResp } = templateSolicitudPendiente({
-            responsable,
-            participante,
-            grupo,
-          });
-          enviarMail({ to: responsable.email, subject: subjectResp, html: htmlResp }); // sin await
-        }
-      }
-    }
-
+    enviarMail({
+      to: participante.email,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: `credencial_${participante.dni}.png`,
+          content: credencialBuffer,
+          contentType: 'image/png',
+        },
+      ],
+    });
     return participante;
   });
 }

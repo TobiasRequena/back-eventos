@@ -38,6 +38,7 @@ router.use(resolverOrganizacionActiva);
 
 router.post('/', validate(crearEventoSchema), eventosController.crear);
 router.get('/', eventosController.listar);
+router.get('/stats/inscripciones', eventosController.statsInscripciones);
 router.get('/:id', validate(idParamSchema), eventosController.obtener);
 router.patch('/:id', validate(editarEventoSchema), eventosController.editar);
 router.delete('/:id', validate(idParamSchema), eventosController.eliminar);

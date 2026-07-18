@@ -158,6 +158,23 @@ async function listarInscriptosCompleto(eventoId) {
   }));
 }
 
+/**
+ * Cuenta inscripciones por día para una organización en un rango de fechas.
+ * Usa DATE_TRUNC para agrupar por día (PostgreSQL).
+ * Solo devuelve los días que tienen inscripciones — los días con 0
+ * los completamos en el service.
+ */
+async function contarInscripcionesPorDia(orgId, fechaInicio, fechaFin) {
+  return db('participante')
+    .where({ org_id: orgId })
+    .andWhere('creado_en', '>=', fechaInicio)
+    .andWhere('creado_en', '<=', fechaFin)
+    .select(db.raw(`DATE_TRUNC('day', creado_en AT TIME ZONE 'America/Argentina/Buenos_Aires') as fecha`))
+    .count('id as inscripciones')
+    .groupByRaw(`DATE_TRUNC('day', creado_en AT TIME ZONE 'America/Argentina/Buenos_Aires')`)
+    .orderBy('fecha', 'asc');
+}
+
 module.exports = {
   contarPorOrganizacion,
   buscarActivoPorCodigo,
@@ -170,4 +187,5 @@ module.exports = {
   contarInscriptosPorTaller,
   listarRespuestasForm,
   listarInscriptosCompleto,
+  contarInscripcionesPorDia,
 };

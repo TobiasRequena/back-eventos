@@ -46,13 +46,14 @@ const transporter = nodemailer.createTransport({
  * Función base para enviar mails via SMTP.
  * Misma interfaz que antes — el resto del código no cambia nada.
  */
-async function enviarMail({ to, subject, html }) {
+async function enviarMail({ to, subject, html, attachments = [] }) {
   try {
     const info = await transporter.sendMail({
       from: `"Talita Encuentro" <${process.env.MAIL_FROM}>`,
       to,
       subject,
       html,
+      attachments,
     });
 
     console.log('[mail] Enviado OK:', info.messageId);
