@@ -89,10 +89,16 @@ async function eliminar(req, res, next) {
  */
 async function actualizarEstadoVinculo(req, res, next) {
   try {
+    // Resolvemos orgId según el tipo de token
+    const orgId = req.usuario
+      ? req.orgId  // admin: viene del header X-Org-Id resuelto por resolverOrganizacionActiva
+      : req.referente.orgId; // referente: viene del JWT
+
     const participante = await participantesService.actualizarEstadoVinculo(
       req.params.id,
-      req.orgId,
-      req.body.estado
+      orgId,
+      req.body.estado,
+      { referente: req.referente } // pasamos el contexto para la validación de grupo
     );
     res.status(200).json({ participante });
   } catch (error) {

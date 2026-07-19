@@ -3,6 +3,7 @@ const express = require('express');
 const participantesController = require('../controllers/participantes.controller');
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
+const autenticarAdminOReferente = require('../../../middlewares/autenticarAdminOReferente');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const {
   crearParticipanteSchema,
@@ -25,6 +26,15 @@ routerPublico.post(
   participantesController.crear
 );
 
+// Router mixto: acepta admin (con X-Org-Id) O referente (sin X-Org-Id)
+const routerMixto = express.Router();
+routerMixto.patch(
+  '/:id/vinculo',
+  autenticarAdminOReferente,
+  validate(actualizarEstadoVinculoSchema),
+  participantesController.actualizarEstadoVinculo
+);
+
 // Router plano: resto de operaciones (requieren auth)
 const routerPlano = express.Router();
 routerPlano.use(autenticar);
@@ -32,11 +42,6 @@ routerPlano.use(resolverOrganizacionActiva);
 routerPlano.get('/:id', validate(idParamSchema), participantesController.obtener);
 routerPlano.patch('/:id', validate(editarParticipanteSchema), participantesController.editar);
 routerPlano.delete('/:id', validate(idParamSchema), participantesController.eliminar);
-routerPlano.patch(
-  '/:id/vinculo',
-  validate(actualizarEstadoVinculoSchema),
-  participantesController.actualizarEstadoVinculo
-);
 routerPlano.get(
   '/:id/ultima-ubicacion',
   validate(idParamSchema),
@@ -44,4 +49,4 @@ routerPlano.get(
 );
 routerPlano.get('/:id/comprobante', validate(idParamSchema), participantesController.obtenerComprobante);
 
-module.exports = { routerAnidado, routerPublico, routerPlano };
+module.exports = { routerAnidado, routerPublico, routerPlano, routerMixto };

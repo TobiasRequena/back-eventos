@@ -35,9 +35,17 @@ const codigoParamSchema = z.object({
   }),
 });
 
+const loginReferenteSchema = z.object({
+  body: z.object({
+    dni: z.string().min(1, 'El DNI es obligatorio'),
+    codigoGrupo: z.string().min(1, 'El código de grupo es obligatorio'),
+  }),
+});
+
 module.exports = {
   crearGrupoSchema,
   editarGrupoSchema,
   idParamSchema,
   codigoParamSchema,
+  loginReferenteSchema
 };

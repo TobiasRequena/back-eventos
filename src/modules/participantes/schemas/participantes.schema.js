@@ -29,6 +29,7 @@ const crearParticipanteSchema = z.object({
     // solo si es menor vinculado a un responsable
 
     tallerIds: z.array(z.string().uuid()).optional().default([]),
+    estadoPago: z.enum(['pendiente', 'aprobado', 'no_aplica', 'rechazado']).optional(),
 
     // Respuestas al formulario dinámico del evento
     // Objeto libre: { [campo_form_id]: valor }

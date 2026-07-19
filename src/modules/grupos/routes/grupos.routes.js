@@ -9,7 +9,9 @@ const {
   editarGrupoSchema,
   idParamSchema,
   codigoParamSchema,
+  loginReferenteSchema
 } = require('../schemas/grupos.schema');
+const autenticarReferente = require('../../../middlewares/autenticarReferente');
 
 // Router público — sin auth
 const routerPublico = express.Router();
@@ -22,6 +24,23 @@ routerPublico.post(
   '/',
   validate(crearGrupoSchema),
   gruposController.crear
+);
+routerPublico.post(
+  '/panel/login',
+  validate(loginReferenteSchema),
+  gruposController.loginReferente
+);
+
+const routerPanel = express.Router();
+routerPanel.get(
+  '/:id/panel/integrantes',
+  autenticarReferente,
+  gruposController.listarIntegrantesReferente
+);
+routerPanel.get(
+  '/:id/panel/solicitudes',
+  autenticarReferente,
+  gruposController.listarSolicitudesReferente
 );
 
 // Router anidado: GET /eventos/:eventoId/grupos (requiere auth)
@@ -40,4 +59,4 @@ routerPlano.delete('/:id', validate(idParamSchema), gruposController.eliminar);
 routerPlano.get('/:id/integrantes', validate(idParamSchema), gruposController.listarIntegrantes);
 routerPlano.get('/:id/solicitudes', validate(idParamSchema), gruposController.listarSolicitudes);
 
-module.exports = { routerPublico, routerAnidado, routerPlano };
+module.exports = { routerPublico, routerAnidado, routerPlano, routerPanel };

@@ -77,6 +77,47 @@ async function listarSolicitudes(req, res, next) {
   }
 }
 
+async function loginReferente(req, res, next) {
+  try {
+    const resultado = await gruposService.loginReferente(req.body);
+    res.status(200).json(resultado);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listarIntegrantesReferente(req, res, next) {
+  try {
+    if (req.referente.grupoId !== req.params.id) {
+      return res.status(403).json({ error: { message: 'No tenés permisos sobre este grupo' } });
+    }
+    const integrantes = await gruposService.listarIntegrantes(
+      req.params.id,
+      req.referente.orgId,
+      'referente' // ← contexto reducido
+    );
+    res.status(200).json({ integrantes });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listarSolicitudesReferente(req, res, next) {
+  try {
+    if (req.referente.grupoId !== req.params.id) {
+      return res.status(403).json({ error: { message: 'No tenés permisos sobre este grupo' } });
+    }
+    const solicitudes = await gruposService.listarSolicitudes(
+      req.params.id,
+      req.referente.orgId,
+      'referente' // ← contexto reducido
+    );
+    res.status(200).json({ solicitudes });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   crear,
   listar,
@@ -86,4 +127,7 @@ module.exports = {
   resolverInvitacion,
   listarIntegrantes,
   listarSolicitudes,
+  loginReferente,
+  listarIntegrantesReferente,
+  listarSolicitudesReferente
 };

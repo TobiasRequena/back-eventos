@@ -15,6 +15,7 @@ const {
 const { generarCredencial } = require('../../../utils/generarCredencial');
 const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
+const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -34,6 +35,40 @@ function calcularEsMayor(nacimiento) {
   }
 
   return edad >= 18;
+}
+
+/**
+ * Devuelve solo los campos permitidos según el contexto.
+ * - admin: todos los campos, DNI desencriptado
+ * - referente/público: campos reducidos, sin DNI
+ */
+function sanitizarParticipante(participante, contexto = 'admin') {
+  if (contexto === 'admin') {
+    let dniLegible = participante.dni;
+    try {
+      dniLegible = desencriptar(participante.dni);
+    } catch {
+      // datos viejos sin encriptar, lo dejamos como está
+    }
+    return {
+      ...participante,
+      dni: dniLegible,
+      dni_hash: undefined, // nunca exponemos el hash
+    };
+  }
+
+  // Contexto reducido (panel de referente)
+  return {
+    id: participante.id,
+    nombre: participante.nombre,
+    apellido: participante.apellido,
+    nacimiento: participante.nacimiento,
+    es_mayor: participante.es_mayor,
+    estado_pago: participante.estado_pago,
+    estado_vinculo: participante.estado_vinculo,
+    rol_grupo: participante.rol_grupo,
+    grupo_id: participante.grupo_id,
+  };
 }
 
 /**
@@ -166,6 +201,9 @@ async function crearParticipante(orgId, datos) {
     // 8. Generar QR personal único
     const qrPersonal = uuidv4();
 
+    const dniEncriptado = encriptar(datos.dni);
+    const dniHash = hashDni(datos.dni);
+
     const participante = await participantesRepository.crear(
       {
         orgId: orgIdFinal,
@@ -174,7 +212,8 @@ async function crearParticipante(orgId, datos) {
         nombre: datos.nombre,
         apellido: datos.apellido,
         email: datos.email,
-        dni: datos.dni,
+        dniEncriptado,   // ← encriptado
+        dniHash,         // ← hash
         nacimiento: datos.nacimiento,
         esMayor,
         rolGrupo: datos.rolGrupo,
@@ -250,7 +289,7 @@ async function crearParticipante(orgId, datos) {
       html,
       attachments: [
         {
-          filename: `credencial_${participante.dni}.png`,
+          filename: `credencial_${datos.dni}.png`,
           content: credencialBuffer,
           contentType: 'image/png',
         },
@@ -277,7 +316,8 @@ async function listarParticipantes(eventoId, orgId, filtros = {}) {
     throw error;
   }
 
-  return participantesRepository.listarPorEvento(eventoId, filtros);
+  const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
+  return participantes.map((p) => sanitizarParticipante(p, 'admin'));
 }
 
 /**
@@ -298,7 +338,7 @@ async function obtenerParticipante(id, orgId) {
     throw error;
   }
 
-  return participante;
+  return sanitizarParticipante(participante, 'admin');
 }
 
 /**
@@ -341,7 +381,7 @@ async function eliminarParticipante(id, orgId) {
  * (estado_vinculo = 'rechazado', grupo_id queda como estaba — el participante
  * puede volver a vincularse a otro grupo después).
  */
-async function actualizarEstadoVinculo(id, orgId, estado) {
+async function actualizarEstadoVinculo(id, orgId, estado, contexto = {}) {
   const participante = await obtenerParticipante(id, orgId);
 
   if (participante.rol_grupo !== 'autoinscripto') {
@@ -356,6 +396,16 @@ async function actualizarEstadoVinculo(id, orgId, estado) {
     throw error;
   }
 
+  // Si viene un referente (no un admin), verificar que el participante
+  // pertenece al grupo del referente
+  if (contexto.referente) {
+    if (participante.grupo_id !== contexto.referente.grupoId) {
+      const error = new Error('No tenés permisos para gestionar este participante');
+      error.status = 403;
+      throw error;
+    }
+  }
+
   const actualizado = await participantesRepository.actualizar(id, { estado_vinculo: estado });
 
   // Notificar al participante del resultado
@@ -367,7 +417,7 @@ async function actualizarEstadoVinculo(id, orgId, estado) {
       ? templateVinculoAceptado({ participante, grupo, evento })
       : templateVinculoRechazado({ participante, grupo, evento });
 
-    enviarMail({ to: participante.email, ...template }); // sin await
+    enviarMail({ to: participante.email, ...template });
   }
 
   return actualizado;
@@ -393,4 +443,5 @@ module.exports = {
   actualizarEstadoVinculo,
   obtenerUltimaUbicacion,
   calcularEsMayor,
+  sanitizarParticipante
 };

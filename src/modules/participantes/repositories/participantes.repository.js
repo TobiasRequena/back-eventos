@@ -1,4 +1,5 @@
 const { db } = require('../../../config/db');
+const { hashDni } = require('../../../utils/encryption');
 
 /**
  * Verifica si ya existe un participante con el mismo DNI en el mismo evento.
@@ -6,7 +7,9 @@ const { db } = require('../../../config/db');
  * del INSERT para dar un mensaje claro en lugar del error crudo de PostgreSQL.
  */
 async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
-  return trx('participante').where({ dni, evento_id: eventoId }).first();
+  return trx('participante')
+    .where({ dni_hash: hashDni(dni), evento_id: eventoId })
+    .first();
 }
 
 async function buscarPorId(id, trx = db) {
@@ -66,7 +69,8 @@ async function crear(datos, trx = db) {
         nombre: datos.nombre,
         apellido: datos.apellido,
         email: datos.email,
-        dni: datos.dni,
+        dni: datos.dniEncriptado,       // ← encriptado
+        dni_hash: datos.dniHash,        // ← hash para búsquedas
         nacimiento: datos.nacimiento,
         es_mayor: datos.esMayor,
         rol_grupo: datos.rolGrupo,
@@ -81,20 +85,17 @@ async function crear(datos, trx = db) {
 
     return participante;
   } catch (err) {
-    // Atrapar violación de UNIQUE de PostgreSQL (código 23505)
-    // y convertirla en un error de negocio claro
     if (err.code === '23505') {
       if (err.constraint === 'uq_participante_dni_evento') {
         const error = new Error('Ya existe un participante con ese DNI en este evento');
         error.status = 409;
         throw error;
       }
-      // Por si en el futuro hay otros UNIQUE constraints en participante
       const error = new Error('Ya existe un registro con esos datos');
       error.status = 409;
       throw error;
     }
-    throw err; // cualquier otro error de DB lo dejamos pasar normal
+    throw err;
   }
 }
 

@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken')
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../../../config/db');
 const gruposRepository = require('../repositories/grupos.repository');
@@ -7,6 +8,8 @@ const { enviarMail } = require('../../../utils/mail');
 const { templateInfoGrupoResponsable } = require('../../../utils/mailTemplates');
 const { generarCredencial } = require('../../../utils/generarCredencial');
 const QRCode = require('qrcode');
+const { sanitizarParticipante } = require('../../participantes/services/participantes.service');
+const { hashDni } = require('../../../utils/encryption');
 
 /**
  * Genera el código de invitación — 8 caracteres alfanuméricos en mayúsculas,
@@ -134,7 +137,7 @@ async function crearGrupo(orgId, datos) {
           contentType: 'image/png',
         },
         {
-          filename: `credencial_${responsable.dni}.png`,
+          filename: `credencial_responsable.png`,
           content: credencialBuffer,
           contentType: 'image/png',
         },
@@ -244,17 +247,90 @@ async function resolverCodigoInvitacion(codigoInv) {
 /**
  * Lista los integrantes del grupo con todos sus campos.
  */
-async function listarIntegrantes(id, orgId) {
+async function listarIntegrantes(id, orgId, contexto = 'admin') {
   await obtenerGrupo(id, orgId);
-  return gruposRepository.listarIntegrantes(id);
+  const integrantes = await gruposRepository.listarIntegrantes(id);
+  return integrantes.map((p) => sanitizarParticipante(p, contexto));
 }
 
 /**
  * Lista los autoinscriptos pendientes de aprobación.
  */
-async function listarSolicitudes(id, orgId) {
+async function listarSolicitudes(id, orgId, contexto = 'admin') {
   await obtenerGrupo(id, orgId);
-  return gruposRepository.listarSolicitudes(id);
+  const solicitudes = await gruposRepository.listarSolicitudes(id);
+  return solicitudes.map((p) => sanitizarParticipante(p, contexto));
+}
+
+/**
+ * Login liviano para el referente del grupo.
+ * Verifica que el DNI corresponda al responsable de ese grupo
+ * y devuelve un JWT liviano con grupoId y participanteId.
+ */
+async function loginReferente({ dni, codigoGrupo }) {
+  const grupo = await gruposRepository.buscarPorCodigoInv(codigoGrupo);
+  if (!grupo) {
+    const error = new Error('DNI o código de grupo incorrecto');
+    error.status = 401;
+    throw error;
+  }
+
+  const responsable = await participantesRepository.buscarPorId(grupo.responsable_id);
+  if (!responsable) {
+    const error = new Error('DNI o código de grupo incorrecto');
+    error.status = 401;
+    throw error;
+  }
+
+  if (responsable.dni_hash !== hashDni(dni)) {
+    const error = new Error('DNI o código de grupo incorrecto');
+    error.status = 401;
+    throw error;
+  }
+
+  // Traer datos del evento para la cabecera del panel
+  const evento = await eventosRepository.buscarPorId(grupo.evento_id);
+  const { construirUrlPublica } = require('../../../utils/storage');
+  const archivosRepository = require('../../archivos/repositories/archivos.repository');
+  const portada = await archivosRepository.buscarPortadaDeEvento(evento.id);
+
+  const token = jwt.sign(
+    {
+      tipo: 'referente',
+      grupoId: grupo.id,
+      participanteId: responsable.id,
+      orgId: grupo.org_id,
+      eventoId: grupo.evento_id,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+
+  return {
+    token,
+    grupo: {
+      id: grupo.id,
+      nombre: grupo.nombre,
+      codigoInv: grupo.codigo_inv,
+      maxIntegrantes: grupo.max_integrantes,
+      parroquia: grupo.parroquia,
+      localidad: grupo.localidad,
+    },
+    responsable: {
+      id: responsable.id,
+      nombre: responsable.nombre,
+      apellido: responsable.apellido,
+    },
+    evento: {
+      id: evento.id,
+      nombre: evento.nombre,
+      descripcion: evento.descripcion,
+      fechaInicio: evento.fecha_inicio,
+      fechaFin: evento.fecha_fin,
+      codigo: evento.codigo,
+      imagenUrl: construirUrlPublica(portada?.key),
+    },
+  };
 }
 
 module.exports = {
@@ -266,4 +342,5 @@ module.exports = {
   resolverCodigoInvitacion,
   listarIntegrantes,
   listarSolicitudes,
+  loginReferente
 };

@@ -19,11 +19,13 @@ const {
     routerAnidado: participantesAnidado,
     routerPublico: participantesPublico,
     routerPlano: participantesPlano,
+    routerMixto: participantesMixto,
 } = require('./modules/participantes/routes/participantes.routes');
 const {
     routerPublico: gruposPublico,
     routerAnidado: gruposAnidado,
     routerPlano: gruposPlano,
+    routerPanel: gruposPanel,
 } = require('./modules/grupos/routes/grupos.routes');
 const routerFormularios = require('./modules/formularios/routes/formularios.routes');
 
@@ -61,14 +63,16 @@ app.use('/api/v1/talleres', routerTalleresPlano);
 app.use('/api/v1/archivos', routerArchivos);
 
 // Participantes
-app.use('/api/v1/participantes', participantesPublico);  // público — va primero
+app.use('/api/v1/participantes', participantesPublico);
+app.use('/api/v1/participantes', participantesMixto);  // ← antes que plano
 app.use('/api/v1/eventos', participantesAnidado);
 app.use('/api/v1/participantes', participantesPlano);
 
 // Grupos
 app.use('/api/v1/grupos', gruposPublico);
+app.use('/api/v1/grupos', gruposPanel);  // ← panel ANTES que plano
 app.use('/api/v1/eventos', gruposAnidado);
-app.use('/api/v1/grupos', gruposPlano);
+app.use('/api/v1/grupos', gruposPlano);  // ← plano al final
 
 // Formularios
 app.use('/api/v1/eventos', routerFormularios);
