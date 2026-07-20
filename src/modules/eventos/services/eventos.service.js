@@ -5,6 +5,7 @@ const formulariosRepository = require('../../formularios/repositories/formulario
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
 const archivosRepository = require('../../archivos/repositories/archivos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
+const { desencriptar } = require('../../../utils/encryption');
 
 const { construirUrlPublica } = require('../../../utils/storage');
 
@@ -480,10 +481,17 @@ async function generarExcelInscriptos(id, orgId) {
     const rowNumber = DATA_START_ROW + idx;
     const row = sheet.getRow(rowNumber);
 
+    let dniLegible = p.dni;
+    try {
+      dniLegible = desencriptar(p.dni);
+    } catch {
+
+    }
+
     const fila = {
       apellido: p.apellido,
       nombre: p.nombre,
-      dni: p.dni,
+      dni: dniLegible,
       email: p.email,
       nacimiento: p.nacimiento ? new Date(p.nacimiento) : null,
       es_mayor: p.es_mayor ? 'Sí' : 'No',
