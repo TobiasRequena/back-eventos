@@ -66,6 +66,15 @@ const actualizarEstadoVinculoSchema = z.object({
   }),
 });
 
+const reenviarMailSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Id de participante inválido'),
+  }),
+  body: z.object({
+    email: z.string().email('Email inválido').optional(),
+  }),
+});
+
 module.exports = {
   crearParticipanteSchema,
   editarParticipanteSchema,
@@ -75,4 +84,5 @@ module.exports = {
   ESTADO_VINCULO,
   ESTADO_PAGO,
   PAGADO_POR,
+  reenviarMailSchema
 };

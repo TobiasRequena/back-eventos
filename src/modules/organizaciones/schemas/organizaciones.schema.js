@@ -30,8 +30,19 @@ const quitarMiembroSchema = z.object({
   }),
 });
 
+const actualizarRolSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Id de organización inválido'),
+    usuarioId: z.string().uuid('Id de usuario inválido'),
+  }),
+  body: z.object({
+    rol: z.enum(['admin', 'invitado']),
+  }),
+});
+
 module.exports = {
   completarOrganizacionSchema,
   invitarMiembroSchema,
   quitarMiembroSchema,
+  actualizarRolSchema,
 };

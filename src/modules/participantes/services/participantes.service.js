@@ -437,6 +437,55 @@ async function obtenerUltimaUbicacion(id, orgId) {
   return null;
 }
 
+async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
+  const participante = await participantesRepository.buscarPorId(id);
+
+  if (!participante) {
+    const error = new Error('Participante no encontrado');
+    error.status = 404;
+    throw error;
+  }
+
+  if (participante.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este participante');
+    error.status = 403;
+    throw error;
+  }
+
+  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+
+  let dniLegible = participante.dni;
+  try { dniLegible = desencriptar(participante.dni); } catch { }
+
+  const credencialBuffer = await generarCredencial({
+    qrPersonal: participante.qr_personal,
+    nombreEvento: evento.nombre,
+    nombreParticipante: `${participante.nombre} ${participante.apellido}`,
+    dni: dniLegible,
+  });
+
+  const { subject, html } = templateConfirmacionInscripcion({
+    participante: { ...participante, dni: dniLegible },
+    evento,
+  });
+
+  // Si viene emailOverride, lo usamos; sino el del participante
+  const destinatario = emailOverride ?? participante.email;
+
+  await enviarMail({
+    to: destinatario,
+    subject,
+    html,
+    attachments: [
+      {
+        filename: `credencial_${dniLegible}.png`,
+        content: credencialBuffer,
+        contentType: 'image/png',
+      },
+    ],
+  });
+}
+
 module.exports = {
   crearParticipante,
   listarParticipantes,
@@ -446,5 +495,6 @@ module.exports = {
   actualizarEstadoVinculo,
   obtenerUltimaUbicacion,
   calcularEsMayor,
-  sanitizarParticipante
+  sanitizarParticipante,
+  reenviarMailInscripcion
 };

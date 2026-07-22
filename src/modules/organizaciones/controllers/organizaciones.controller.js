@@ -77,4 +77,41 @@ async function quitarMiembro(req, res, next) {
   }
 }
 
-module.exports = { listarMias, completar, listarMiembros, invitarMiembro, quitarMiembro };
+async function obtener(req, res, next) {
+  try {
+    const organizacion = await organizacionesService.obtenerOrganizacion(
+      req.params.id,
+      req.usuario.sub
+    );
+    res.status(200).json({ organizacion });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function salir(req, res, next) {
+  try {
+    await organizacionesService.salirDeOrganizacion(req.params.id, req.usuario.sub);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function actualizarRol(req, res, next) {
+  try {
+    const { id, usuarioId } = req.params;
+    const { rol } = req.body;
+    const vinculo = await organizacionesService.actualizarRolMiembro(
+      id,
+      usuarioId,
+      rol,
+      req.usuario.sub
+    );
+    res.status(200).json({ vinculo });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { listarMias, completar, listarMiembros, invitarMiembro, quitarMiembro, obtener, salir, actualizarRol };

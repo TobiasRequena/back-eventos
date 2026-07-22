@@ -145,6 +145,19 @@ async function obtenerComprobante(req, res, next) {
   }
 }
 
+async function reenviarMail(req, res, next) {
+  try {
+    await participantesService.reenviarMailInscripcion(
+      req.params.id,
+      req.orgId,
+      req.body.email ?? null
+    );
+    res.status(200).json({ mensaje: 'Mail reenviado correctamente' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   crear,
   listar,
@@ -154,4 +167,5 @@ module.exports = {
   actualizarEstadoVinculo,
   obtenerUltimaUbicacion,
   obtenerComprobante,
+  reenviarMail,
 };

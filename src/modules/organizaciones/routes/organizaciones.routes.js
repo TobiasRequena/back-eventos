@@ -11,6 +11,7 @@ const {
   invitarMiembroSchema,
   quitarMiembroSchema,
 } = require('../schemas/organizaciones.schema');
+const { actualizarRolSchema } = require('../schemas/organizaciones.schema');
 
 router.use(autenticar);
 
@@ -39,6 +40,16 @@ router.post(
   organizacionesController.invitarMiembro
 );
 
+router.delete('/:id/miembros/salir', organizacionesController.salir);
+
+router.patch(
+  '/:id/miembros/:usuarioId',
+  verificarPertenenciaOrganizacion(),
+  requerirRol('admin'),
+  validate(actualizarRolSchema),
+  organizacionesController.actualizarRol
+);
+
 router.delete(
   '/:id/miembros/:usuarioId',
   verificarPertenenciaOrganizacion(),
@@ -46,5 +57,7 @@ router.delete(
   validate(quitarMiembroSchema),
   organizacionesController.quitarMiembro
 );
+
+router.get('/:id', verificarPertenenciaOrganizacion(), organizacionesController.obtener);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const {
   idParamSchema,
   actualizarEstadoVinculoSchema,
 } = require('../schemas/participantes.schema');
+const { reenviarMailSchema } = require('../schemas/participantes.schema');
 
 // Router anidado: GET /eventos/:eventoId/participantes (requiere auth)
 const routerAnidado = express.Router({ mergeParams: true });
@@ -48,5 +49,9 @@ routerPlano.get(
   participantesController.obtenerUltimaUbicacion
 );
 routerPlano.get('/:id/comprobante', validate(idParamSchema), participantesController.obtenerComprobante);
-
+routerPlano.post(
+  '/:id/reenviar-mail',
+  validate(reenviarMailSchema),
+  participantesController.reenviarMail
+);
 module.exports = { routerAnidado, routerPublico, routerPlano, routerMixto };

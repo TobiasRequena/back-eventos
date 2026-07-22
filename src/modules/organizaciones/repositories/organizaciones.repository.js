@@ -90,6 +90,18 @@ async function quitarVinculo(usuarioId, orgId) {
   return db('usuario_organizacion').where({ usuario_id: usuarioId, org_id: orgId }).del();
 }
 
+async function buscarPorId(id, trx = db) {
+  return trx('organizacion').where({ id }).first();
+}
+
+async function actualizarRolMiembro(usuarioId, orgId, rol, trx = db) {
+  const [vinculo] = await trx('usuario_organizacion')
+    .where({ usuario_id: usuarioId, org_id: orgId })
+    .update({ rol })
+    .returning('*');
+  return vinculo;
+}
+
 module.exports = {
   buscarPorId,
   listarPorUsuario,
@@ -98,4 +110,6 @@ module.exports = {
   buscarVinculo,
   crearVinculo,
   quitarVinculo,
+  buscarPorId,
+  actualizarRolMiembro
 };

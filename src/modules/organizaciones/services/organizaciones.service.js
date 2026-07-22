@@ -120,7 +120,83 @@ async function quitarMiembro(orgId, usuarioId) {
     throw error;
   }
 
+  // Si el usuario a quitar es admin, verificar que no sea el último
+  if (vinculo.rol === 'admin') {
+    const miembros = await organizacionesRepository.listarMiembros(orgId);
+    const admins = miembros.filter((m) => m.rol === 'admin');
+    if (admins.length === 1) {
+      const error = new Error(
+        'No podés quitar al único admin de la organización.'
+      );
+      error.status = 409;
+      throw error;
+    }
+  }
+
   await organizacionesRepository.quitarVinculo(usuarioId, orgId);
+}
+
+async function obtenerOrganizacion(id, usuarioId) {
+  // Verificar que el usuario pertenece a la organización
+  const vinculo = await organizacionesRepository.buscarVinculo(usuarioId, id);
+  if (!vinculo) {
+    const error = new Error('No tenés permisos sobre esta organización');
+    error.status = 403;
+    throw error;
+  }
+
+  const organizacion = await organizacionesRepository.buscarPorId(id);
+  if (!organizacion) {
+    const error = new Error('Organización no encontrada');
+    error.status = 404;
+    throw error;
+  }
+
+  return { ...organizacion, rol: vinculo.rol };
+}
+
+async function salirDeOrganizacion(orgId, usuarioId) {
+  const vinculo = await organizacionesRepository.buscarVinculo(usuarioId, orgId);
+  if (!vinculo) {
+    const error = new Error('No pertenecés a esta organización');
+    error.status = 404;
+    throw error;
+  }
+
+  // Si es admin, verificar que no sea el último
+  if (vinculo.rol === 'admin') {
+    const miembros = await organizacionesRepository.listarMiembros(orgId);
+    const admins = miembros.filter((m) => m.rol === 'admin');
+    if (admins.length === 1) {
+      const error = new Error(
+        'No podés salir — sos el único admin de esta organización. Asigná otro admin primero.'
+      );
+      error.status = 409;
+      throw error;
+    }
+  }
+
+  await organizacionesRepository.quitarVinculo(usuarioId, orgId);
+}
+
+async function actualizarRolMiembro(orgId, usuarioId, rol, solicitanteId) {
+  // Verificar que el solicitante es admin
+  const vinculoSolicitante = await organizacionesRepository.buscarVinculo(solicitanteId, orgId);
+  if (!vinculoSolicitante || vinculoSolicitante.rol !== 'admin') {
+    const error = new Error('Solo un admin puede cambiar roles');
+    error.status = 403;
+    throw error;
+  }
+
+  // Verificar que el usuario a actualizar pertenece a la org
+  const vinculo = await organizacionesRepository.buscarVinculo(usuarioId, orgId);
+  if (!vinculo) {
+    const error = new Error('Ese usuario no pertenece a esta organización');
+    error.status = 404;
+    throw error;
+  }
+
+  return organizacionesRepository.actualizarRolMiembro(usuarioId, orgId, rol);
 }
 
 module.exports = {
@@ -129,4 +205,7 @@ module.exports = {
   listarMiembros,
   invitarMiembro,
   quitarMiembro,
+  obtenerOrganizacion,
+  salirDeOrganizacion,
+  actualizarRolMiembro,
 };
