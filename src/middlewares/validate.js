@@ -21,8 +21,7 @@ function validate(schema) {
 
       next();
     } catch (err) {
-      // Si Zod tira una excepción inesperada, la capturamos y la mandamos
-      // al errorHandler en lugar de crashear el proceso
+      console.error('validate exception:', err);
       next(err);
     }
   };

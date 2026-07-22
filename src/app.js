@@ -28,6 +28,11 @@ const {
     routerPanel: gruposPanel,
 } = require('./modules/grupos/routes/grupos.routes');
 const routerFormularios = require('./modules/formularios/routes/formularios.routes');
+const {
+    routerPublico: acreditacionPublico,
+    routerProtegido: acreditacionProtegido,
+    routerAcciones: acreditacionAcciones,
+} = require('./modules/acreditacion/routes/acreditacion.routes');
 
 const app = express();
 
@@ -76,6 +81,10 @@ app.use('/api/v1/grupos', gruposPlano);  // ← plano al final
 
 // Formularios
 app.use('/api/v1/eventos', routerFormularios);
+
+// Acreditación
+app.use('/api/v1/acreditacion', acreditacionPublico);
+app.use('/api/v1/acreditacion', acreditacionAcciones);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

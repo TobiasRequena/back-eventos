@@ -66,6 +66,18 @@ async function contarIntegrantes(grupoId, trx = db) {
 async function listarIntegrantes(grupoId) {
   return db('participante')
     .where({ grupo_id: grupoId })
+    .where((builder) => {
+      builder
+        .where({ rol_grupo: 'responsable' }) // responsable siempre incluido
+        .orWhere((b) => {
+          b.where({ rol_grupo: 'integrante' }) // integrantes aceptados
+            .whereNot({ estado_vinculo: 'pendiente' });
+        })
+        .orWhere((b) => {
+          b.where({ rol_grupo: 'autoinscripto' }) // autoinscriptos solo si fueron aceptados
+            .where({ estado_vinculo: 'aceptado' });
+        });
+    })
     .orderBy('creado_en', 'asc');
 }
 

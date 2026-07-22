@@ -39,7 +39,7 @@ function templateConfirmacionInscripcion({ participante, evento }) {
           <p style="margin: 4px 0;"><strong>Email:</strong> ${participante.email}</p>
         </div>
 
-        ${evento.costo > 0 ? `
+        ${evento.costo > 0 && participante.estado_pago !== 'aprobado' ? `
         <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <p style="margin: 0; color: #854d0e;">⚠️ Tu inscripción tiene un pago pendiente. El organizador del evento te va a contactar con los detalles.</p>
         </div>

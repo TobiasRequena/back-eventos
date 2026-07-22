@@ -212,8 +212,8 @@ async function crearParticipante(orgId, datos) {
         nombre: datos.nombre,
         apellido: datos.apellido,
         email: datos.email,
-        dniEncriptado,   // ← encriptado
-        dniHash,         // ← hash
+        dniEncriptado,
+        dniHash,
         nacimiento: datos.nacimiento,
         esMayor,
         rolGrupo: datos.rolGrupo,
@@ -279,10 +279,13 @@ async function crearParticipante(orgId, datos) {
       qrPersonal: participante.qr_personal,
       nombreEvento: evento.nombre,
       nombreParticipante: `${participante.nombre} ${participante.apellido}`,
-      dni: participante.dni,
+      dni: datos.dni,
     });
 
-    const { subject, html } = templateConfirmacionInscripcion({ participante, evento });
+    const { subject, html } = templateConfirmacionInscripcion({
+      participante: { ...participante, dni: datos.dni },
+      evento,
+    });
     enviarMail({
       to: participante.email,
       subject,
