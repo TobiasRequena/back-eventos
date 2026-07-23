@@ -8,7 +8,7 @@ const { hashDni } = require('../../../utils/encryption');
  */
 async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
   return trx('participante')
-    .where({ dni_hash: hashDni(dni), evento_id: eventoId })
+    .where({ dni_hash: hashDni(dni), evento_id: eventoId, activo: true }) // ← agregar
     .first();
 }
 
@@ -17,7 +17,9 @@ async function buscarPorId(id, trx = db) {
 }
 
 async function buscarPorEmailEnEvento(email, eventoId, trx = db) {
-  return trx('participante').where({ email, evento_id: eventoId }).first();
+  return trx('participante')
+    .where({ email, evento_id: eventoId, activo: true }) // ← agregar
+    .first();
 }
 
 /**
@@ -30,15 +32,14 @@ async function listarPorEvento(eventoId, filtros = {}) {
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
+    .where('participante.activo', true) // ← solo activos por defecto
     .select(
       'participante.*',
-      // Objeto grupo si existe, null si no
       db.raw(`
         CASE WHEN participante.grupo_id IS NOT NULL
         THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
         ELSE NULL END as grupo
       `),
-      // Booleano derivado: tiene checkin = está acreditado
       db.raw('(checkin.id IS NOT NULL) as acreditado')
     );
 
@@ -50,12 +51,30 @@ async function listarPorEvento(eventoId, filtros = {}) {
   return query.orderBy('participante.creado_en', 'asc');
 }
 
+async function listarEliminadosPorEvento(eventoId) {
+  return db('participante')
+    .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
+    .where('participante.evento_id', eventoId)
+    .where('participante.activo', false)
+    .select(
+      'participante.*',
+      db.raw(`
+        CASE WHEN participante.grupo_id IS NOT NULL
+        THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
+        ELSE NULL END as grupo
+      `)
+    )
+    .orderBy('participante.eliminado_en', 'desc');
+}
+
 /**
  * Cuenta los participantes de un evento — reemplaza el cantidadInscriptos: 0
  * hardcodeado en eventos.service.
  */
 async function contarPorEvento(eventoId, trx = db) {
-  const [{ count }] = await trx('participante').where({ evento_id: eventoId }).count('id');
+  const [{ count }] = await trx('participante')
+    .where({ evento_id: eventoId, activo: true }) // ← agregar
+    .count('id');
   return Number(count);
 }
 
@@ -105,7 +124,22 @@ async function actualizar(id, datos, trx = db) {
 }
 
 async function eliminar(id, trx = db) {
-  return trx('participante').where({ id }).del();
+  return trx('participante')
+    .where({ id })
+    .update({
+      activo: false,
+      eliminado_en: new Date(),
+    });
+}
+
+async function purgarEliminados() {
+  const hace90Dias = new Date();
+  hace90Dias.setDate(hace90Dias.getDate() - 90);
+
+  return db('participante')
+    .where('activo', false)
+    .andWhere('eliminado_en', '<=', hace90Dias)
+    .del();
 }
 
 /**
@@ -126,5 +160,7 @@ module.exports = {
   actualizar,
   eliminar,
   buscarPorQr,
-  buscarPorEmailEnEvento
+  buscarPorEmailEnEvento,
+  listarEliminadosPorEvento,
+  purgarEliminados
 };

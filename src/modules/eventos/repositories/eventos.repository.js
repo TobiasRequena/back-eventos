@@ -109,7 +109,7 @@ async function contarInscriptosPorTaller(tallerId) {
  */
 async function listarRespuestasForm(eventoId) {
   return db('participante')
-    .where({ evento_id: eventoId })
+    .where({ evento_id: eventoId, activo: true })
     .whereNotNull('respuestas_form')
     .select('respuestas_form');
 }
@@ -124,6 +124,7 @@ async function listarInscriptosCompleto(eventoId) {
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
+    .where('participante.activo', true)
     .select(
       'participante.*',
       'grupo.nombre as grupo_nombre',

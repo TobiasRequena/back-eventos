@@ -53,10 +53,9 @@ async function eliminar(id, trx = db) {
  */
 async function contarIntegrantes(grupoId, trx = db) {
   const [{ count }] = await trx('participante')
-    .where({ grupo_id: grupoId })
+    .where({ grupo_id: grupoId, activo: true }) // ← agregar
     .whereIn('rol_grupo', ['responsable', 'integrante'])
     .count('id');
-
   return Number(count);
 }
 
@@ -65,7 +64,7 @@ async function contarIntegrantes(grupoId, trx = db) {
  */
 async function listarIntegrantes(grupoId) {
   return db('participante')
-    .where({ grupo_id: grupoId })
+    .where({ grupo_id: grupoId, activo: true }) // ← agregar
     .where((builder) => {
       builder
         .where({ rol_grupo: 'responsable' }) // responsable siempre incluido
@@ -86,7 +85,7 @@ async function listarIntegrantes(grupoId) {
  */
 async function listarSolicitudes(grupoId) {
   return db('participante')
-    .where({ grupo_id: grupoId, rol_grupo: 'autoinscripto', estado_vinculo: 'pendiente' })
+    .where({ grupo_id: grupoId, rol_grupo: 'autoinscripto', estado_vinculo: 'pendiente', activo: true }) // ← agregar
     .orderBy('creado_en', 'asc');
 }
 

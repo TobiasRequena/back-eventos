@@ -17,6 +17,7 @@ const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const routerAnidado = express.Router({ mergeParams: true });
 routerAnidado.use(autenticar);
 routerAnidado.use(resolverOrganizacionActiva);
+routerAnidado.get('/:eventoId/participantes/eliminados', participantesController.listarEliminados);
 routerAnidado.get('/:eventoId/participantes', participantesController.listar);
 
 // Router público: solo POST / (inscripción externa, sin auth)

@@ -486,6 +486,23 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
   });
 }
 
+async function listarEliminados(eventoId, orgId) {
+  const evento = await eventosRepository.buscarPorId(eventoId);
+  if (!evento) {
+    const error = new Error('Evento no encontrado');
+    error.status = 404;
+    throw error;
+  }
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento');
+    error.status = 403;
+    throw error;
+  }
+
+  const eliminados = await participantesRepository.listarEliminadosPorEvento(eventoId);
+  return eliminados.map((p) => sanitizarParticipante(p, 'admin'));
+}
+
 module.exports = {
   crearParticipante,
   listarParticipantes,
@@ -496,5 +513,6 @@ module.exports = {
   obtenerUltimaUbicacion,
   calcularEsMayor,
   sanitizarParticipante,
-  reenviarMailInscripcion
+  reenviarMailInscripcion,
+  listarEliminados
 };

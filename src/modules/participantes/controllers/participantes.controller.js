@@ -158,6 +158,18 @@ async function reenviarMail(req, res, next) {
   }
 }
 
+async function listarEliminados(req, res, next) {
+  try {
+    const participantes = await participantesService.listarEliminados(
+      req.params.eventoId,
+      req.orgId
+    );
+    res.status(200).json({ participantes });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   crear,
   listar,
@@ -168,4 +180,5 @@ module.exports = {
   obtenerUltimaUbicacion,
   obtenerComprobante,
   reenviarMail,
+  listarEliminados
 };
