@@ -16,6 +16,7 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
+const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -150,6 +151,13 @@ async function crearParticipante(orgId, datos) {
     if (!evento) {
       const error = new Error('Evento no encontrado');
       error.status = 404;
+      throw error;
+    }
+
+    // Verificar que el evento no esté cerrado
+    if (eventoEstaCerrado(evento)) {
+      const error = new Error('Las inscripciones para este evento están cerradas');
+      error.status = 409;
       throw error;
     }
 

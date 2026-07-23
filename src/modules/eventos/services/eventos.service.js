@@ -203,6 +203,7 @@ async function editarEvento(id, orgId, datos) {
   if (datos.cbuCvu !== undefined) datosDb.cbu_cvu = datos.cbuCvu;
   if (datos.aliasCobro !== undefined) datosDb.alias_cobro = datos.aliasCobro;
   if (datos.costo !== undefined) datosDb.costo = datos.costo;
+  if (datos.inscripcionesCerradas !== undefined) datosDb.inscripciones_cerradas = datos.inscripcionesCerradas;
 
   return eventosRepository.actualizar(id, datosDb);
 }
@@ -612,6 +613,19 @@ async function obtenerStatsInscripciones(orgId, rango = '7d') {
   return { datos, total };
 }
 
+/**
+ * Verifica si un evento está cerrado para inscripciones y acreditaciones.
+ * Se cierra si:
+ * 1. El admin lo cerró manualmente (inscripciones_cerradas = true)
+ * 2. La fecha_fin + 2hs ya pasó
+ */
+function eventoEstaCerrado(evento) {
+  if (evento.inscripciones_cerradas) return true;
+  const fechaCierre = new Date(evento.fecha_fin);
+  fechaCierre.setHours(fechaCierre.getHours() + 2);
+  return new Date() > fechaCierre;
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -622,5 +636,6 @@ module.exports = {
   verificarDisponibilidadCodigo,
   obtenerStats,
   generarExcelInscriptos,
-  obtenerStatsInscripciones
+  obtenerStatsInscripciones,
+  eventoEstaCerrado
 };

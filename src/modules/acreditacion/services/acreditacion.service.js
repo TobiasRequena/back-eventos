@@ -6,6 +6,7 @@ const eventosRepository = require('../../eventos/repositories/eventos.repository
 const { emitirAEvento } = require('../../../sockets/emitter');
 const EVENTOS_WS = require('../../../sockets/event');
 const { desencriptar } = require('../../../utils/encryption');
+const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 
 /**
  * Crea una sesión de acreditador — identidad efímera para el día del evento.
@@ -119,6 +120,13 @@ async function acreditarIndividual(participanteId, acreditadorId, orgId, puntoAc
       throw error;
     }
 
+    const evento = await eventosRepository.buscarPorId(participante.evento_id, trx);
+    if (eventoEstaCerrado(evento)) {
+      const error = new Error('Las acreditaciones para este evento están cerradas');
+      error.status = 409;
+      throw error;
+    }
+
     // Resolver orgId desde el participante si no viene del header
     const orgIdFinal = orgId ?? participante.org_id;
 
@@ -175,6 +183,13 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
         throw error;
       }
       orgIdFinal = evento.org_id;
+    }
+
+    const evento = await eventosRepository.buscarPorId(eventoId, trx);
+    if (eventoEstaCerrado(evento)) {
+      const error = new Error('Las acreditaciones para este evento están cerradas');
+      error.status = 409;
+      throw error;
     }
 
     const resultados = [];

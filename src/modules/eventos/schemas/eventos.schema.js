@@ -71,6 +71,7 @@ const editarEventoSchema = z.object({
     cbuCvu: z.string().max(50).optional(),
     aliasCobro: z.string().max(50).optional(),
     costo: z.number().nonnegative().optional(),
+    inscripcionesCerradas: z.boolean().optional(),
   }),
 });
 

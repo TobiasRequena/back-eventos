@@ -90,7 +90,7 @@ async function eliminar(id, trx = db) {
  * Cuenta el total de inscriptos de un evento.
  */
 async function contarInscriptos(eventoId) {
-  const [{ count }] = await db('participante').where({ evento_id: eventoId }).count('id');
+  const [{ count }] = await db('participante').where({ evento_id: eventoId, activo: true }).count('id');
   return Number(count);
 }
 
