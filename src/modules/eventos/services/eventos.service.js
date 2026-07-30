@@ -5,6 +5,7 @@ const formulariosRepository = require('../../formularios/repositories/formulario
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
 const archivosRepository = require('../../archivos/repositories/archivos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
+const pagosRepository = require('../../pagos/repositories/pagos.repository');
 const { desencriptar } = require('../../../utils/encryption');
 
 const { construirUrlPublica } = require('../../../utils/storage');
@@ -102,15 +103,23 @@ async function listarEventos(orgId) {
 
   return Promise.all(
     eventos.map(async (evento) => {
-      const [portada, cantidadInscriptos] = await Promise.all([
+      const [portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
         archivosRepository.buscarPortadaDeEvento(evento.id),
         participantesRepository.contarPorEvento(evento.id),
+        pagosRepository.buscarPagoPendientePorEvento(evento.id),
       ]);
 
       return {
         ...evento,
         cantidadInscriptos,
         imagenUrl: construirUrlPublica(portada?.key),
+        pagoPlatforma: pagoPendiente
+          ? {
+            estado: pagoPendiente.estado,
+            monto: pagoPendiente.monto,
+            pagoId: pagoPendiente.id,
+          }
+          : null,
       };
     })
   );
@@ -148,11 +157,12 @@ async function obtenerEvento(id, orgId) {
     throw error;
   }
 
-  const [camposForm, bloquesTaller, portada, cantidadInscriptos] = await Promise.all([
+  const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
     participantesRepository.contarPorEvento(evento.id),
+    pagosRepository.buscarPagoPendientePorEvento(evento.id),
   ]);
 
   return {
@@ -160,7 +170,14 @@ async function obtenerEvento(id, orgId) {
     camposForm,
     bloquesTaller,
     cantidadInscriptos,
-    imagenUrl: portada ? construirUrlPublica(portada.key) : null,
+    imagenUrl: construirUrlPublica(portada?.key),
+    pagoPlatforma: pagoPendiente
+      ? {
+        estado: pagoPendiente.estado,
+        monto: pagoPendiente.monto,
+        pagoId: pagoPendiente.id,
+      }
+      : null,
   };
 }
 

@@ -17,6 +17,7 @@ const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
+const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -283,30 +284,66 @@ async function crearParticipante(orgId, datos) {
     }
 
     // 10. Generar credencial y enviar mail
-    const credencialBuffer = await generarCredencial({
+    const datosParaMail = {
+      email: participante.email,
+      nombre: participante.nombre,
+      apellido: participante.apellido,
       qrPersonal: participante.qr_personal,
-      nombreEvento: evento.nombre,
-      nombreParticipante: `${participante.nombre} ${participante.apellido}`,
       dni: datos.dni,
+    };
+
+    // fire and forget — después de que la transacción commitea
+    setTimeout(async () => {
+      try {
+        // Releer el participante para ver el estado_alta_plataforma real
+        const participanteActualizado = await participantesRepository.buscarPorId(participante.id);
+
+        if (participanteActualizado.estado_alta_plataforma === 'confirmado') {
+          const credencialBuffer = await generarCredencial({
+            qrPersonal: datosParaMail.qrPersonal,
+            nombreEvento: evento.nombre,
+            nombreParticipante: `${datosParaMail.nombre} ${datosParaMail.apellido}`,
+            dni: datosParaMail.dni,
+          });
+
+          const { subject, html } = templateConfirmacionInscripcion({
+            participante: { ...participanteActualizado, dni: datosParaMail.dni },
+            evento,
+          });
+
+          enviarMail({
+            to: datosParaMail.email,
+            subject,
+            html,
+            attachments: [{
+              filename: `credencial_${datosParaMail.dni}.png`,
+              content: credencialBuffer,
+              contentType: 'image/png',
+            }],
+          });
+        } else {
+          enviarMail({
+            to: datosParaMail.email,
+            subject: `📋 Inscripción recibida — ${evento.nombre}`,
+            html: `
+          <p>Hola ${datosParaMail.nombre}, tu inscripción fue recibida pero está pendiente de confirmación.</p>
+          <p>Una vez que el organizador regularice el pago de la plataforma, recibirás tu credencial con QR.</p>
+        `,
+          });
+        }
+      } catch (err) {
+        console.error('[mail] Error al enviar mail de inscripción:', err.message);
+      }
+    }, 3000);
+
+    // fire and forget
+    setImmediate(() => {
+      verificarYGenerarCargo(datos.eventoId).catch((err) => {
+        console.error('[pagos] Error al verificar cargo:', err.message);
+      });
     });
 
-    const { subject, html } = templateConfirmacionInscripcion({
-      participante: { ...participante, dni: datos.dni },
-      evento,
-    });
-    enviarMail({
-      to: participante.email,
-      subject,
-      html,
-      attachments: [
-        {
-          filename: `credencial_${datos.dni}.png`,
-          content: credencialBuffer,
-          contentType: 'image/png',
-        },
-      ],
-    });
-    return participante;
+    return sanitizarParticipante(participante, 'admin');
   });
 }
 

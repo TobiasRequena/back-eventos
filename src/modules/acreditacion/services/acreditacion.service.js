@@ -4,7 +4,7 @@ const participantesRepository = require('../../participantes/repositories/partic
 const gruposRepository = require('../../grupos/repositories/grupos.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const { emitirAEvento } = require('../../../sockets/emitter');
-const EVENTOS_WS = require('../../../sockets/event');
+const EVENTOS_WS = require('../../../sockets/events');
 const { desencriptar } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 

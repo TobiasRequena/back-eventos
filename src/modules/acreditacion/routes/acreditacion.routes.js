@@ -9,15 +9,18 @@ const {
   escanearQrSchema,
   checkinGrupalSchema,
 } = require('../schemas/acreditacion.schema');
+const verificarPagoEvento = require('../../../middlewares/verificarPagoEvento');
 
 // Router público — escanear QR no requiere auth (lo usa el acreditador en el celular)
 const routerPublico = express.Router();
+routerPublico.use(verificarPagoEvento);
 routerPublico.get('/escanear', acreditacionController.escanearQr);
 routerPublico.post('/sesion', validate(crearSesionSchema), acreditacionController.crearSesion);
 
 // Acreditar — público porque el acreditador no tiene cuenta,
 // pero validamos que la sesión exista en el service
 const routerAcciones = express.Router();
+routerAcciones.use(verificarPagoEvento);
 routerAcciones.post('/individual', acreditacionController.acreditarIndividual);
 routerAcciones.post('/grupal', validate(checkinGrupalSchema), acreditacionController.acreditarGrupal);
 
