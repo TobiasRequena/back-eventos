@@ -195,12 +195,14 @@ async function verificarEsquemaDeLaOrg(esquemaId, orgId, trx = db) {
 
 async function crearEsquema(eventoId, orgId, usuarioId, datos) {
   await verificarEventoDeLaOrg(eventoId, orgId);
-  return repo.crearEsquema({ ...datos, eventoId, orgId, creadoPorUsuarioId: usuarioId });
+  const esquema = await repo.crearEsquema({ ...datos, eventoId, orgId, creadoPorUsuarioId: usuarioId });
+  invalidar(`esquemas:evento:${eventoId}`);
+  return esquema;
 }
 
 async function listarEsquemas(eventoId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
-  return repo.listarPorEvento(eventoId);
+  return getOrSet(`esquemas:evento:${eventoId}`, () => repo.listarPorEvento(eventoId));
 }
 
 async function obtenerEsquema(eventoId, esquemaId, orgId) {
@@ -256,10 +258,12 @@ async function editarEsquema(eventoId, esquemaId, orgId, datos) {
   if (datos.nombresPreset !== undefined) datosDb.nombres_preset = datos.nombresPreset;
   if (datos.nombresLista !== undefined) datosDb.nombres_lista = JSON.stringify(datos.nombresLista);
 
+  invalidar(`esquemas:evento:${eventoId}`);
   return repo.actualizarEsquema(esquemaId, datosDb);
 }
 
 async function eliminarEsquema(eventoId, esquemaId, orgId) {
+  invalidar(`esquemas:evento:${eventoId}`);
   await verificarEventoDeLaOrg(eventoId, orgId);
   await verificarEsquemaDeLaOrg(esquemaId, orgId);
   await repo.eliminarEsquema(esquemaId);

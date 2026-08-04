@@ -40,6 +40,10 @@ function calcularEsMayor(nacimiento) {
   return edad >= 18;
 }
 
+async function buscarEventoCacheado(id) {
+  return getOrSet(`evento:${id}`, () => eventosRepository.buscarPorId(id));
+}
+
 /**
  * Devuelve solo los campos permitidos según el contexto.
  * - admin: todos los campos, DNI desencriptado
@@ -145,7 +149,7 @@ function validarRespuestasForm(campos, respuestas = {}) {
 async function crearParticipante(orgId, datos) {
   return db.transaction(async (trx) => {
     // 1. Verificar que el evento existe
-    const evento = await eventosRepository.buscarPorId(datos.eventoId, trx);
+    const evento = await buscarEventoCacheado(datos.eventoId, trx);
     if (!evento) {
       const error = new Error('Evento no encontrado');
       error.status = 404;
@@ -352,28 +356,26 @@ async function crearParticipante(orgId, datos) {
  * También verifica pertenencia del evento a la organización.
  */
 async function listarParticipantes(eventoId, orgId, filtros = {}) {
-  const evento = await eventosRepository.buscarPorId(eventoId);
+  // Validar primero (sin caché — es una check de seguridad)
+  const evento = await buscarEventoCacheado(eventoId);
   if (!evento) {
-    const error = new Error('Evento no encontrado');
-    error.status = 404;
-    throw error;
+    const error = new Error('Evento no encontrado'); error.status = 404; throw error;
   }
   if (evento.org_id !== orgId) {
-    const error = new Error('No tenés permisos sobre este evento');
-    error.status = 403;
-    throw error;
+    const error = new Error('No tenés permisos sobre este evento'); error.status = 403; throw error;
   }
 
+  // Si hay filtros → no cachear (resultado varía)
   if (Object.keys(filtros).length > 0) {
     const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
     return participantes.map((p) => sanitizarParticipante(p, 'admin'));
   }
+
+  // Sin filtros → cachear
   return getOrSet(`participantes:evento:${eventoId}`, async () => {
     const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
     return participantes.map((p) => sanitizarParticipante(p, 'admin'));
   });
-
-
 }
 
 /**
@@ -470,7 +472,7 @@ async function actualizarEstadoVinculo(id, orgId, estado, contexto = {}) {
 
   // Notificar al participante del resultado
   const grupo = await gruposRepository.buscarPorId(participante.grupo_id);
-  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+  const evento = await buscarEventoCacheado(participante.evento_id);
 
   if (grupo && evento) {
     const template = estado === 'aceptado'
@@ -509,7 +511,7 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
     throw error;
   }
 
-  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+  const evento = await buscarEventoCacheado(participante.evento_id);
 
   let dniLegible = participante.dni;
   try { dniLegible = desencriptar(participante.dni); } catch { }
@@ -544,7 +546,7 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
 }
 
 async function listarEliminados(eventoId, orgId) {
-  const evento = await eventosRepository.buscarPorId(eventoId);
+  const evento = await buscarEventoCacheado(eventoId);
   if (!evento) {
     const error = new Error('Evento no encontrado');
     error.status = 404;

@@ -6,48 +6,67 @@ const morgan = require('morgan');
 const errorHandler = require('./middlewares/errorHandler');
 
 const {
-    routerBloquesAnidado,
-    routerTalleresEnBloque,
-    routerBloquesPlano,
-    routerTalleresPlano,
+  routerBloquesAnidado,
+  routerTalleresEnBloque,
+  routerBloquesPlano,
+  routerTalleresPlano,
 } = require('./modules/talleres/routes/talleres.routes');
 const routerOrganizaciones = require('./modules/organizaciones/routes/organizaciones.routes');
 const routerEventos = require('./modules/eventos/routes/eventos.routes');
 const routerAuth = require('./modules/auth/routes/auth.routes');
 const routerArchivos = require('./modules/archivos/routes/archivos.routes');
 const {
-    routerAnidado: participantesAnidado,
-    routerPublico: participantesPublico,
-    routerPlano: participantesPlano,
-    routerMixto: participantesMixto,
+  routerAnidado: participantesAnidado,
+  routerPublico: participantesPublico,
+  routerPlano: participantesPlano,
+  routerMixto: participantesMixto,
 } = require('./modules/participantes/routes/participantes.routes');
 const {
-    routerPublico: gruposPublico,
-    routerAnidado: gruposAnidado,
-    routerPlano: gruposPlano,
-    routerPanel: gruposPanel,
+  routerPublico: gruposPublico,
+  routerAnidado: gruposAnidado,
+  routerPlano: gruposPlano,
+  routerPanel: gruposPanel,
 } = require('./modules/grupos/routes/grupos.routes');
 const routerFormularios = require('./modules/formularios/routes/formularios.routes');
 const {
-    routerPublico: acreditacionPublico,
-    routerProtegido: acreditacionProtegido,
-    routerAcciones: acreditacionAcciones,
+  routerPublico: acreditacionPublico,
+  routerProtegido: acreditacionProtegido,
+  routerAcciones: acreditacionAcciones,
 } = require('./modules/acreditacion/routes/acreditacion.routes');
 const routerPagos = require('./modules/pagos/routes/pagos.routes');
 const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL_PRUEBA,
+  'http://localhost:5173',
+].filter(Boolean);
 
 const app = express();
 
 // Middlewares globales
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Permite requests sin Origin (Postman, curl, etc.)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS no permitido para: ${origin}`));
+    },
+  })
+);
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Healthcheck — útil para verificar que el server y Railway responden
 app.get('/api/v1/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Acá van montándose las rutas de cada módulo a medida que las construyamos:
@@ -96,7 +115,7 @@ app.use('/api/v1/eventos/:eventoId/esquemas-grupos-trabajo', routerGruposTrabajo
 
 // 404 para rutas no encontradas
 app.use((req, res) => {
-    res.status(404).json({ error: { message: 'Recurso no encontrado' } });
+  res.status(404).json({ error: { message: 'Recurso no encontrado' } });
 });
 
 // Manejo de errores (siempre al final)
