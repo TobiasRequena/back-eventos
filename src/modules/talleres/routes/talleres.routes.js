@@ -63,6 +63,13 @@ routerTalleresPlano.delete(
   talleresController.desasignarParticipante
 );
 
+routerTalleresPlano.get(
+  '/:tallerId/excel',
+  autenticar,
+  resolverOrganizacionActiva,
+  talleresController.descargarExcelTaller
+);
+
 module.exports = {
   routerBloquesAnidado,
   routerTalleresEnBloque,

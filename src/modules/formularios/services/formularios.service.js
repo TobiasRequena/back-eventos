@@ -1,5 +1,6 @@
 const formulariosRepository = require('../repositories/formularios.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
+const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
 
 /**
  * Verifica que el evento exista y pertenezca a la org, y que el campo
@@ -34,19 +35,21 @@ async function verificarCampoDelEvento(eventoId, campoId, orgId) {
 }
 
 async function listarCampos(eventoId, orgId) {
-  const evento = await eventosRepository.buscarPorId(eventoId);
-  if (!evento) {
-    const error = new Error('Evento no encontrado');
-    error.status = 404;
-    throw error;
-  }
-  if (evento.org_id !== orgId) {
-    const error = new Error('No tenés permisos sobre este evento');
-    error.status = 403;
-    throw error;
-  }
+  return getOrSet(`campos_form:${eventoId}`, async () => {
+    const evento = await eventosRepository.buscarPorId(eventoId);
+    if (!evento) {
+      const error = new Error('Evento no encontrado');
+      error.status = 404;
+      throw error;
+    }
+    if (evento.org_id !== orgId) {
+      const error = new Error('No tenés permisos sobre este evento');
+      error.status = 403;
+      throw error;
+    }
 
-  return formulariosRepository.listarPorEvento(eventoId);
+    return formulariosRepository.listarPorEvento(eventoId);
+  })
 }
 
 async function crearCampo(eventoId, orgId, datos) {
@@ -90,6 +93,7 @@ async function editarCampo(eventoId, campoId, orgId, datos) {
 async function eliminarCampo(eventoId, campoId, orgId) {
   await verificarCampoDelEvento(eventoId, campoId, orgId);
   await formulariosRepository.eliminar(campoId);
+  invalidar(`campos_form:${eventoId}`);
 }
 
 /**

@@ -123,6 +123,7 @@ async function contarInscriptos(tallerId, trx = db) {
 async function listarInscriptos(tallerId) {
   return db('participante_taller')
     .join('participante', 'participante.id', 'participante_taller.participante_id')
+    .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .where('participante_taller.taller_id', tallerId)
     .select(
       // Todos los campos de participante
@@ -145,6 +146,7 @@ async function listarInscriptos(tallerId) {
       'participante.qr_personal',
       'participante.creado_en',
       'participante.actualizado_en',
+      db.raw('(checkin.id IS NOT NULL) as acreditado'),
       // Dato extra de la tabla puente — útil para saber cuándo se asignó al taller
       'participante_taller.id as inscripcion_taller_id'
     );

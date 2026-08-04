@@ -18,6 +18,7 @@ const gruposRepository = require('../../grupos/repositories/grupos.repository');
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
+const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -47,25 +48,21 @@ function calcularEsMayor(nacimiento) {
 function sanitizarParticipante(participante, contexto = 'admin') {
   if (contexto === 'admin') {
     let dniLegible = participante.dni;
-    try {
-      dniLegible = desencriptar(participante.dni);
-    } catch {
-      // datos viejos sin encriptar, lo dejamos como está
-    }
+    try { dniLegible = desencriptar(participante.dni); } catch { }
     return {
       ...participante,
       dni: dniLegible,
-      dni_hash: undefined, // nunca exponemos el hash
+      dni_hash: undefined,
+      edad: calcularEdad(participante.nacimiento), // ← agregar
     };
   }
 
-  // Contexto reducido (panel de referente)
   return {
     id: participante.id,
     nombre: participante.nombre,
     apellido: participante.apellido,
     nacimiento: participante.nacimiento,
-    es_mayor: participante.es_mayor,
+    edad: calcularEdad(participante.nacimiento), // ← reemplaza es_mayor
     estado_pago: participante.estado_pago,
     estado_vinculo: participante.estado_vinculo,
     rol_grupo: participante.rol_grupo,
@@ -343,6 +340,9 @@ async function crearParticipante(orgId, datos) {
       });
     });
 
+    invalidarPorPrefijo(`participantes:evento:${datos.eventoId}`);
+    invalidarPorPrefijo(`evento:${datos.eventoId}`);
+
     return sanitizarParticipante(participante, 'admin');
   });
 }
@@ -364,8 +364,16 @@ async function listarParticipantes(eventoId, orgId, filtros = {}) {
     throw error;
   }
 
-  const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
-  return participantes.map((p) => sanitizarParticipante(p, 'admin'));
+  if (Object.keys(filtros).length > 0) {
+    const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
+    return participantes.map((p) => sanitizarParticipante(p, 'admin'));
+  }
+  return getOrSet(`participantes:evento:${eventoId}`, async () => {
+    const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
+    return participantes.map((p) => sanitizarParticipante(p, 'admin'));
+  });
+
+
 }
 
 /**
@@ -407,6 +415,7 @@ async function editarParticipante(id, orgId, datos) {
     datosDb.respuestas_form = JSON.stringify(datos.respuestasForm);
   }
 
+  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
   return participantesRepository.actualizar(id, datosDb);
 }
 
@@ -418,6 +427,9 @@ async function editarParticipante(id, orgId, datos) {
 async function eliminarParticipante(id, orgId) {
   await obtenerParticipante(id, orgId);
   await participantesRepository.eliminar(id);
+
+  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+  invalidarPorPrefijo(`evento:${participante.evento_id}`);
 }
 
 /**
@@ -548,6 +560,15 @@ async function listarEliminados(eventoId, orgId) {
   return eliminados.map((p) => sanitizarParticipante(p, 'admin'));
 }
 
+function calcularEdad(nacimiento) {
+  if (!nacimiento) return null;
+  const hoy = new Date();
+  const nac = new Date(nacimiento);
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  if (hoy < new Date(hoy.getFullYear(), nac.getMonth(), nac.getDate())) edad--;
+  return edad;
+}
+
 module.exports = {
   crearParticipante,
   listarParticipantes,
@@ -559,5 +580,6 @@ module.exports = {
   calcularEsMayor,
   sanitizarParticipante,
   reenviarMailInscripcion,
-  listarEliminados
+  listarEliminados,
+  calcularEdad,
 };

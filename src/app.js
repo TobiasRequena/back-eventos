@@ -34,7 +34,7 @@ const {
     routerAcciones: acreditacionAcciones,
 } = require('./modules/acreditacion/routes/acreditacion.routes');
 const routerPagos = require('./modules/pagos/routes/pagos.routes');
-// const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
+const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
 
 const app = express();
 
@@ -92,7 +92,7 @@ app.use('/api/v1/acreditacion', acreditacionAcciones);
 app.use('/api/v1/pagos', routerPagos);
 
 //Grupos de Trabajo
-// app.use('/api/v1/eventos/:eventoId/esquemas-grupos-trabajo', routerGruposTrabajo);
+app.use('/api/v1/eventos/:eventoId/esquemas-grupos-trabajo', routerGruposTrabajo);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

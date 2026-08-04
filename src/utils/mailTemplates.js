@@ -261,6 +261,37 @@ function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, 
   };
 }
 
+function templateAsignacionGrupo({ participante, grupo, evento }) {
+  return {
+    subject: `📋 Tu grupo de trabajo — ${evento.nombre}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+        
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Grupo de trabajo
+        </h1>
+
+        <p>Hola <strong>${participante.nombre} ${participante.apellido}</strong>,</p>
+        <p>Te informamos que fuiste asignado a un grupo de trabajo para el evento <strong>${evento.nombre}</strong>.</p>
+
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
+          <p style="margin: 16px 0 4px 0; font-size: 13px; color: #6b7280;">Tu grupo</p>
+          <p style="margin: 0; font-size: 28px; font-weight: bold; color: #1E3A5F;">${grupo.nombre}</p>
+        </div>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+
+      </body>
+      </html>
+    `,
+  };
+}
+
 module.exports = {
   templateConfirmacionInscripcion,
   templateVinculoAceptado,
@@ -268,4 +299,5 @@ module.exports = {
   templateSolicitudPendiente,
   templateInfoGrupoResponsable,
   templatePagoPlataformaPendiente,
+  templateAsignacionGrupo
 };

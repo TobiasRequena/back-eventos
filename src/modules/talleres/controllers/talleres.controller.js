@@ -130,6 +130,18 @@ async function contarInscriptos(req, res, next) {
   }
 }
 
+async function descargarExcelTaller(req, res, next) {
+  try {
+    const { buffer, nombreArchivo } = await talleresService.generarExcelTaller(
+      req.params.tallerId,
+      req.orgId
+    );
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    res.send(buffer);
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   crearBloque,
   listarBloques,
@@ -143,5 +155,6 @@ module.exports = {
   listarInscriptos,
   asignarParticipante,
   desasignarParticipante,
-  contarInscriptos
+  contarInscriptos,
+  descargarExcelTaller
 };

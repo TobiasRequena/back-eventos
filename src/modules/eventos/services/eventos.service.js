@@ -7,8 +7,16 @@ const archivosRepository = require('../../archivos/repositories/archivos.reposit
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const pagosRepository = require('../../pagos/repositories/pagos.repository');
 const { desencriptar } = require('../../../utils/encryption');
-
+const { calcularEdad } = require('../../participantes/services/participantes.service');
 const { construirUrlPublica } = require('../../../utils/storage');
+const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+
+const ESTADO_PAGO_LABELS = {
+  no_aplica: 'Sin costo',
+  pendiente: 'Pendiente',
+  aprobado: 'Aprobado',
+  rechazado: 'Rechazado',
+};
 
 /**
  * Crea un evento nuevo, junto con sus campos de formulario (si vienen),
@@ -58,6 +66,8 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
+    invalidarPorPrefijo(`eventos:org:${orgId}`);
+
     // 4. Crear los campos de formulario, si vinieron
     const camposCreados = await formulariosRepository.crearVarios(
       evento.id,
@@ -99,30 +109,32 @@ async function crearEvento(orgId, usuarioId, datos) {
  * en obtenerEvento, hasta que exista el módulo participantes.
  */
 async function listarEventos(orgId) {
-  const eventos = await eventosRepository.listarPorOrganizacion(orgId);
+  return getOrSet(`eventos:org:${orgId}`, async () => {
+    const eventos = await eventosRepository.listarPorOrganizacion(orgId);
 
-  return Promise.all(
-    eventos.map(async (evento) => {
-      const [portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
-        archivosRepository.buscarPortadaDeEvento(evento.id),
-        participantesRepository.contarPorEvento(evento.id),
-        pagosRepository.buscarPagoPendientePorEvento(evento.id),
-      ]);
+    return Promise.all(
+      eventos.map(async (evento) => {
+        const [portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
+          archivosRepository.buscarPortadaDeEvento(evento.id),
+          participantesRepository.contarPorEvento(evento.id),
+          pagosRepository.buscarPagoPendientePorEvento(evento.id),
+        ]);
 
-      return {
-        ...evento,
-        cantidadInscriptos,
-        imagenUrl: construirUrlPublica(portada?.key),
-        pagoPlatforma: pagoPendiente
-          ? {
-            estado: pagoPendiente.estado,
-            monto: pagoPendiente.monto,
-            pagoId: pagoPendiente.id,
-          }
-          : null,
-      };
-    })
-  );
+        return {
+          ...evento,
+          cantidadInscriptos,
+          imagenUrl: construirUrlPublica(portada?.key),
+          pagoPlatforma: pagoPendiente
+            ? {
+              estado: pagoPendiente.estado,
+              monto: pagoPendiente.monto,
+              pagoId: pagoPendiente.id,
+            }
+            : null,
+        };
+      })
+    );
+  });
 }
 
 /**
@@ -143,42 +155,44 @@ async function listarEventos(orgId) {
  * con evento_id = este evento).
  */
 async function obtenerEvento(id, orgId) {
-  const evento = await eventosRepository.buscarPorId(id);
+  return getOrSet(`evento:${id}`, async () => {
+    const evento = await eventosRepository.buscarPorId(id);
 
-  if (!evento) {
-    const error = new Error('Evento no encontrado');
-    error.status = 404;
-    throw error;
-  }
+    if (!evento) {
+      const error = new Error('Evento no encontrado');
+      error.status = 404;
+      throw error;
+    }
 
-  if (evento.org_id !== orgId) {
-    const error = new Error('No tenés permisos sobre este evento');
-    error.status = 403;
-    throw error;
-  }
+    if (evento.org_id !== orgId) {
+      const error = new Error('No tenés permisos sobre este evento');
+      error.status = 403;
+      throw error;
+    }
 
-  const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
-    formulariosRepository.listarPorEvento(evento.id),
-    talleresRepository.listarBloquesPorEvento(evento.id),
-    archivosRepository.buscarPortadaDeEvento(evento.id),
-    participantesRepository.contarPorEvento(evento.id),
-    pagosRepository.buscarPagoPendientePorEvento(evento.id),
-  ]);
+    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
+      formulariosRepository.listarPorEvento(evento.id),
+      talleresRepository.listarBloquesPorEvento(evento.id),
+      archivosRepository.buscarPortadaDeEvento(evento.id),
+      participantesRepository.contarPorEvento(evento.id),
+      pagosRepository.buscarPagoPendientePorEvento(evento.id),
+    ]);
 
-  return {
-    ...evento,
-    camposForm,
-    bloquesTaller,
-    cantidadInscriptos,
-    imagenUrl: construirUrlPublica(portada?.key),
-    pagoPlatforma: pagoPendiente
-      ? {
-        estado: pagoPendiente.estado,
-        monto: pagoPendiente.monto,
-        pagoId: pagoPendiente.id,
-      }
-      : null,
-  };
+    return {
+      ...evento,
+      camposForm,
+      bloquesTaller,
+      cantidadInscriptos,
+      imagenUrl: construirUrlPublica(portada?.key),
+      pagoPlatforma: pagoPendiente
+        ? {
+          estado: pagoPendiente.estado,
+          monto: pagoPendiente.monto,
+          pagoId: pagoPendiente.id,
+        }
+        : null,
+    };
+  });
 }
 
 /**
@@ -187,6 +201,8 @@ async function obtenerEvento(id, orgId) {
  */
 async function editarEvento(id, orgId, datos) {
   const evento = await obtenerEvento(id, orgId);
+  invalidar(`evento:${id}`);
+  invalidarPorPrefijo(`eventos:org:${orgId}`);
 
   const fechaInicioFinal = datos.fechaInicio ?? evento.fecha_inicio;
   const fechaFinFinal = datos.fechaFin ?? evento.fecha_fin;
@@ -231,6 +247,8 @@ async function editarEvento(id, orgId, datos) {
 async function eliminarEvento(id, orgId) {
   await obtenerEvento(id, orgId); // valida existencia + pertenencia, descarta el resultado
   await eventosRepository.eliminar(id);
+  invalidar(`evento:${id}`);
+  invalidarPorPrefijo(`eventos:org:${orgId}`);
 }
 
 /**
@@ -295,173 +313,144 @@ async function verificarDisponibilidadCodigo(codigo) {
  * SQL con jsonb_each() de PostgreSQL que hace el grouping en la DB.
  */
 async function obtenerStats(id, orgId) {
-  // Verificamos pertenencia (reutilizamos la validación de obtenerEvento
-  // sin traer todo el detalle — solo necesitamos saber que el evento existe
-  // y es de esta org antes de hacer las queries de stats).
   const evento = await eventosRepository.buscarPorId(id);
-  if (!evento) {
-    const error = new Error('Evento no encontrado');
-    error.status = 404;
-    throw error;
-  }
-  if (evento.org_id !== orgId) {
-    const error = new Error('No tenés permisos sobre este evento');
-    error.status = 403;
-    throw error;
-  }
+  if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
+  if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
-  // Traemos todo lo que necesitamos en paralelo
-  const [totalInscriptos, bloques, campos, filas] = await Promise.all([
-    eventosRepository.contarInscriptos(id),
-    talleresRepository.listarBloquesPorEvento(id),
-    formulariosRepository.listarPorEvento(id),
-    eventosRepository.listarRespuestasForm(id),
-  ]);
+  return getOrSet(`stats:evento:${id}`, async () => {
+    const [totalInscriptos, bloques, campos, filas] = await Promise.all([
+      eventosRepository.contarInscriptos(id),
+      talleresRepository.listarBloquesPorEvento(id),
+      formulariosRepository.listarPorEvento(id),
+      eventosRepository.listarRespuestasForm(id),
+    ]);
 
-  // Calcular inscriptos por taller
-  const bloquesConStats = await Promise.all(
-    bloques.map(async (bloque) => ({
-      id: bloque.id,
-      nombre: bloque.nombre,
-      cantidad_elegible: bloque.cantidad_elegible,
-      es_obligatorio: bloque.es_obligatorio,
-      talleres: await Promise.all(
-        bloque.talleres.map(async (taller) => ({
-          id: taller.id,
-          nombre: taller.nombre,
-          capacidad: taller.capacidad,
-          inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
-        }))
-      ),
-    }))
-  );
+    const bloquesConStats = await Promise.all(
+      bloques.map(async (bloque) => ({
+        id: bloque.id,
+        nombre: bloque.nombre,
+        cantidad_elegible: bloque.cantidad_elegible,
+        es_obligatorio: bloque.es_obligatorio,
+        talleres: await Promise.all(
+          bloque.talleres.map(async (taller) => ({
+            id: taller.id,
+            nombre: taller.nombre,
+            capacidad: taller.capacidad,
+            inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
+          }))
+        ),
+      }))
+    );
 
-  // Agrupar respuestas de campos de formulario en memoria
-  // Solo mostramos stats de campos de tipo seleccion, booleano y texto —
-  // fecha y numero tienen demasiada variabilidad para ser útiles agrupados.
-  const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
+    const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
 
-  const camposFormStats = campos
-    .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
-    .map((campo) => {
-      // Recolectamos todos los valores no vacíos para este campo
-      const valores = [];
-      for (const fila of filas) {
-        const respuestas = fila.respuestas_form || {};
-        const valor = respuestas[campo.id];
-        if (valor === undefined || valor === null || valor === '') continue;
-        valores.push(valor);
-      }
+    const camposFormStats = campos
+      .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
+      .map((campo) => {
+        const valores = [];
+        for (const fila of filas) {
+          const respuestas = fila.respuestas_form || {};
+          const valor = respuestas[campo.id];
+          if (valor === undefined || valor === null || valor === '') continue;
+          valores.push(valor);
+        }
+        const totalRespuestas = valores.length;
+        let stats = {};
 
-      const totalRespuestas = valores.length;
-      let stats = {};
-
-      switch (campo.tipo) {
-        case 'seleccion':
-        case 'booleano': {
-          // Agrupa por valor y cuenta frecuencia, ordenado desc
-          const conteo = {};
-          for (const v of valores) {
-            const clave = String(v);
-            conteo[clave] = (conteo[clave] || 0) + 1;
+        switch (campo.tipo) {
+          case 'seleccion':
+          case 'booleano': {
+            const conteo = {};
+            for (const v of valores) {
+              const clave = String(v);
+              conteo[clave] = (conteo[clave] || 0) + 1;
+            }
+            stats.respuestasPopulares = Object.entries(conteo)
+              .map(([valor, cantidad]) => ({ valor, cantidad }))
+              .sort((a, b) => b.cantidad - a.cantidad);
+            break;
           }
-          stats.respuestasPopulares = Object.entries(conteo)
-            .map(([valor, cantidad]) => ({ valor, cantidad }))
-            .sort((a, b) => b.cantidad - a.cantidad);
-          break;
+          case 'texto': {
+            // ← Todas las respuestas normalizadas, no solo top 5
+            const conteo = {};
+            for (const v of valores) {
+              const clave = String(v).trim().toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, ''); // quitar acentos
+              conteo[clave] = (conteo[clave] || 0) + 1;
+            }
+            stats.respuestasFrecuentes = Object.entries(conteo)
+              .map(([valor, cantidad]) => ({ valor, cantidad }))
+              .sort((a, b) => b.cantidad - a.cantidad); // ← sin .slice(0, 5)
+            break;
+          }
+          case 'numero': {
+            const nums = valores.map(Number).filter((n) => !isNaN(n));
+            if (nums.length > 0) {
+              stats.promedio = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
+              stats.minimo = Math.min(...nums);
+              stats.maximo = Math.max(...nums);
+            }
+            break;
+          }
+          case 'fecha': {
+            const fechas = valores.map((v) => new Date(v)).filter((d) => !isNaN(d));
+            if (fechas.length > 0) {
+              stats.minimo = new Date(Math.min(...fechas)).toISOString().split('T')[0];
+              stats.maximo = new Date(Math.max(...fechas)).toISOString().split('T')[0];
+            }
+            break;
+          }
         }
 
-        case 'texto': {
-          // Top 5 respuestas más frecuentes (útil si hay respuestas comunes)
-          // + total de respuestas no vacías
-          const conteo = {};
-          for (const v of valores) {
-            const clave = String(v).trim().toLowerCase();
-            conteo[clave] = (conteo[clave] || 0) + 1;
-          }
-          stats.respuestasFrecuentes = Object.entries(conteo)
-            .map(([valor, cantidad]) => ({ valor, cantidad }))
-            .sort((a, b) => b.cantidad - a.cantidad)
-            .slice(0, 5);
-          break;
-        }
+        return {
+          id: campo.id,
+          etiqueta: campo.etiqueta,
+          tipo: campo.tipo,
+          totalRespuestas,
+          ...stats,
+        };
+      });
 
-        case 'numero': {
-          const nums = valores.map(Number).filter((n) => !isNaN(n));
-          if (nums.length > 0) {
-            stats.promedio = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
-            stats.minimo = Math.min(...nums);
-            stats.maximo = Math.max(...nums);
-          }
-          break;
-        }
-
-        case 'fecha': {
-          const fechas = valores.map((v) => new Date(v)).filter((d) => !isNaN(d));
-          if (fechas.length > 0) {
-            stats.minimo = new Date(Math.min(...fechas)).toISOString().split('T')[0];
-            stats.maximo = new Date(Math.max(...fechas)).toISOString().split('T')[0];
-          }
-          break;
-        }
-      }
-
-      return {
-        id: campo.id,
-        etiqueta: campo.etiqueta,
-        tipo: campo.tipo,
-        totalRespuestas,
-        ...stats,
-      };
-    });
-
-  return {
-    totalInscriptos,
-    bloquesTaller: bloquesConStats,
-    camposFormStats,
-  };
+    return {
+      totalInscriptos,
+      bloquesTaller: bloquesConStats,
+      camposFormStats,
+    };
+  }, 900); // 15 minutos
 }
 
 async function generarExcelInscriptos(id, orgId) {
   const evento = await eventosRepository.buscarPorId(id);
-
-  if (!evento) {
-    const error = new Error('Evento no encontrado');
-    error.status = 404;
-    throw error;
-  }
-
-  if (evento.org_id !== orgId) {
-    const error = new Error('No tenés permisos sobre este evento');
-    error.status = 403;
-    throw error;
-  }
+  if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
+  if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
   const campos = await formulariosRepository.listarPorEvento(id);
   const participantes = await eventosRepository.listarInscriptosCompleto(id);
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Mi aplicación';
+  workbook.creator = 'Talita Encuentros';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Inscriptos');
-
-  const COL_START = 2; // B
+  const COL_START = 2;
   const HEADER_ROW = 2;
   const DATA_START_ROW = 3;
 
-  // Columna A vacía (espaciadora) + columnas reales desde B
+  // ← Columnas condicionales según configuración del evento
   const columnasReales = [
     { header: 'Apellido', key: 'apellido' },
     { header: 'Nombre', key: 'nombre' },
     { header: 'DNI', key: 'dni' },
     { header: 'Email', key: 'email' },
     { header: 'Fecha de nacimiento', key: 'nacimiento' },
-    { header: 'Es mayor', key: 'es_mayor' },
+    { header: 'Edad', key: 'edad' },
     { header: 'Estado de pago', key: 'estado_pago' },
-    { header: 'Grupo', key: 'grupo_nombre' },
+    // Solo si tiene grupos
+    ...(evento.tiene_grupos ? [{ header: 'Grupo', key: 'grupo_nombre' }] : []),
     { header: 'Acreditado', key: 'acreditado' },
-    { header: 'Talleres', key: 'talleres' },
+    // Solo si tiene talleres
+    ...(evento.tiene_talleres ? [{ header: 'Talleres', key: 'talleres' }] : []),
     ...campos.map((c) => ({ header: c.etiqueta, key: `campo_${c.id}` })),
   ];
 
@@ -500,11 +489,7 @@ async function generarExcelInscriptos(id, orgId) {
     const row = sheet.getRow(rowNumber);
 
     let dniLegible = p.dni;
-    try {
-      dniLegible = desencriptar(p.dni);
-    } catch {
-
-    }
+    try { dniLegible = desencriptar(p.dni); } catch { }
 
     const fila = {
       apellido: p.apellido,
@@ -512,17 +497,18 @@ async function generarExcelInscriptos(id, orgId) {
       dni: dniLegible,
       email: p.email,
       nacimiento: p.nacimiento ? new Date(p.nacimiento) : null,
-      es_mayor: p.es_mayor ? 'Sí' : 'No',
-      estado_pago: p.estado_pago,
-      grupo_nombre: p.grupo_nombre ?? 'Individual',
+      edad: calcularEdad(p.nacimiento),
+      estado_pago: ESTADO_PAGO_LABELS[p.estado_pago] ?? p.estado_pago,
+      // Solo si tiene grupos
+      ...(evento.tiene_grupos ? { grupo_nombre: p.grupo_nombre ?? 'Individual' } : {}),
       acreditado: p.acreditado ? 'Sí' : 'No',
-      talleres: p.talleres.join(' / '),
+      // Solo si tiene talleres — todos los talleres separados por ' / '
+      ...(evento.tiene_talleres ? { talleres: p.talleres.join(' / ') } : {}),
     };
 
     for (const campo of campos) {
       const valor = respuestas[campo.id];
-      fila[`campo_${campo.id}`] =
-        valor === true ? 'Sí' : valor === false ? 'No' : valor ?? '';
+      fila[`campo_${campo.id}`] = valor === true ? 'Sí' : valor === false ? 'No' : valor ?? '';
     }
 
     columnasReales.forEach((col, i) => {
@@ -535,7 +521,10 @@ async function generarExcelInscriptos(id, orgId) {
     });
   });
 
-  sheet.getColumn(COL_START + 4).numFmt = 'dd/mm/yyyy'; // columna "nacimiento"
+  const idxNacimiento = columnasReales.findIndex(c => c.key === 'nacimiento');
+  if (idxNacimiento >= 0) {
+    sheet.getColumn(COL_START + idxNacimiento).numFmt = 'dd/mm/yyyy';
+  }
 
   // ===== ANCHO AUTOMÁTICO (solo columnas reales, desde B) =====
   const MIN_WIDTH = 10;

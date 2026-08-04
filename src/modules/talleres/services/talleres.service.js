@@ -1,6 +1,17 @@
 const { db } = require('../../../config/db');
 const talleresRepository = require('../repositories/talleres.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
+const ExcelJS = require('exceljs');
+const { desencriptar } = require('../../../utils/encryption');
+const { calcularEdad } = require('../../participantes/services/participantes.service');
+const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+
+const ESTADO_PAGO_LABELS = {
+  no_aplica: 'Sin costo',
+  pendiente: 'Pendiente',
+  aprobado: 'Aprobado',
+  rechazado: 'Rechazado',
+};
 
 /**
  * Verifica que un evento exista y pertenezca a la organización activa.
@@ -48,8 +59,10 @@ async function crearBloque(eventoId, orgId, datos) {
  * Lista los bloques (con sus talleres anidados) de un evento.
  */
 async function listarBloques(eventoId, orgId) {
-  await verificarEventoDeLaOrg(eventoId, orgId);
-  return talleresRepository.listarBloquesPorEvento(eventoId);
+  return getOrSet(`bloques:${eventoId}`, async () => {
+    await verificarEventoDeLaOrg(eventoId, orgId);
+    return talleresRepository.listarBloquesPorEvento(eventoId);
+  });
 }
 
 /**
@@ -87,6 +100,8 @@ async function editarBloque(id, orgId, datos) {
   if (datos.esObligatorio !== undefined) datosDb.es_obligatorio = datos.esObligatorio;
   if (datos.orden !== undefined) datosDb.orden = datos.orden;
 
+  invalidarPorPrefijo(`bloques:${eventoId}`);
+  invalidarPorPrefijo(`participantes:evento:${eventoId}`);
   return talleresRepository.actualizarBloque(id, datosDb);
 }
 
@@ -110,6 +125,8 @@ async function eliminarBloque(id, orgId) {
     throw error;
   }
 
+  invalidarPorPrefijo(`bloques:${eventoId}`);
+  invalidarPorPrefijo(`participantes:evento:${eventoId}`);
   await talleresRepository.eliminarBloque(id);
 }
 
@@ -267,6 +284,133 @@ async function desasignarParticipante(tallerId, orgId, participanteId) {
   await talleresRepository.desasignarParticipante(participanteId, taller.id);
 }
 
+async function generarExcelTaller(tallerId, orgId) {
+  const taller = await talleresRepository.buscarPorId(tallerId);
+  if (!taller) {
+    const error = new Error('Taller no encontrado'); error.status = 404; throw error;
+  }
+  if (taller.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este taller'); error.status = 403; throw error;
+  }
+
+  const evento = await eventosRepository.buscarPorId(taller.evento_id);
+
+  const inscriptos = await talleresRepository.listarInscriptos(tallerId);
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Talita Encuentros';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Participantes');
+
+  const COL_START = 2;
+  const HEADER_ROW = 2;
+  const DATA_START_ROW = 3;
+  const BORDE = { style: 'thin', color: { argb: 'FF000000' } };
+  const BORDE_GRUESO = { style: 'medium', color: { argb: 'FF000000' } };
+  const MIN_WIDTH = 10;
+  const MAX_WIDTH = 55;
+
+  const columnas = [
+    { header: 'Apellido', key: 'apellido' },
+    { header: 'Nombre', key: 'nombre' },
+    { header: 'DNI', key: 'dni' },
+    { header: 'Fecha de nacimiento', key: 'nacimiento' },
+    { header: 'Edad', key: 'edad' },
+    { header: 'Estado de pago', key: 'estado_pago' },
+    { header: 'Acreditado', key: 'acreditado' },
+  ];
+
+  sheet.columns = [
+    { key: '_spacer', width: 3 },
+    ...columnas.map(({ key }) => ({ key })),
+  ];
+
+  sheet.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
+
+  const lastCol = COL_START + columnas.length - 1;
+  const lastRow = inscriptos.length ? DATA_START_ROW + inscriptos.length - 1 : HEADER_ROW;
+
+  sheet.autoFilter = {
+    from: { row: HEADER_ROW, column: COL_START },
+    to: { row: HEADER_ROW, column: lastCol },
+  };
+
+  // Headers
+  columnas.forEach((col, i) => {
+    const cell = sheet.getCell(HEADER_ROW, COL_START + i);
+    cell.value = col.header;
+    cell.font = { bold: true };
+    cell.border = { top: BORDE, left: BORDE, right: BORDE, bottom: BORDE };
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  // Datos
+  inscriptos.forEach((p, idx) => {
+    let dniLegible = p.dni;
+    try { dniLegible = desencriptar(p.dni); } catch { }
+
+    const rowNumber = DATA_START_ROW + idx;
+    const row = sheet.getRow(rowNumber);
+
+    // Necesitamos el checkin — lo traemos aparte
+    const fila = {
+      apellido: p.apellido,
+      nombre: p.nombre,
+      dni: dniLegible,
+      nacimiento: p.nacimiento ? new Date(p.nacimiento) : null,
+      edad: calcularEdad(p.nacimiento),
+      estado_pago: ESTADO_PAGO_LABELS[p.estado_pago] ?? p.estado_pago,
+      acreditado: p.acreditado ? 'Sí' : 'No',
+    };
+
+    columnas.forEach((col, i) => {
+      const cell = row.getCell(COL_START + i);
+      cell.value = fila[col.key] ?? null;
+      cell.border = { left: BORDE, right: BORDE };
+      if (rowNumber % 2 === 0) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      }
+    });
+  });
+
+  const idxNacimiento = columnas.findIndex(c => c.key === 'nacimiento');
+  if (idxNacimiento >= 0) sheet.getColumn(COL_START + idxNacimiento).numFmt = 'dd/mm/yyyy';
+
+  // Ancho automático
+  columnas.forEach((col, i) => {
+    const colIndex = COL_START + i;
+    let maxLen = col.header.length;
+    sheet.getColumn(colIndex).eachCell({ includeEmpty: false }, (cell, rowNum) => {
+      if (rowNum === HEADER_ROW) return;
+      const valor = cell.value;
+      const largo = valor instanceof Date ? 10 : String(valor ?? '').length;
+      if (largo > maxLen) maxLen = largo;
+    });
+    sheet.getColumn(colIndex).width = Math.min(Math.max(maxLen + 4, MIN_WIDTH), MAX_WIDTH);
+  });
+
+  // Borde grueso perimetral
+  for (let r = HEADER_ROW; r <= lastRow; r++) {
+    for (let c = COL_START; c <= lastCol; c++) {
+      const cell = sheet.getCell(r, c);
+      const actual = cell.border || {};
+      cell.border = {
+        top: r === HEADER_ROW ? BORDE_GRUESO : actual.top,
+        bottom: r === lastRow ? BORDE_GRUESO : actual.bottom,
+        left: c === COL_START ? BORDE_GRUESO : actual.left,
+        right: c === lastCol ? BORDE_GRUESO : actual.right,
+      };
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return {
+    buffer,
+    nombreArchivo: `taller_${taller.nombre.replace(/\s+/g, '_')}_${evento.codigo}.xlsx`,
+  };
+}
+
 module.exports = {
   crearBloque,
   listarBloques,
@@ -280,4 +424,5 @@ module.exports = {
   listarInscriptos,
   asignarParticipante,
   desasignarParticipante,
+  generarExcelTaller
 };

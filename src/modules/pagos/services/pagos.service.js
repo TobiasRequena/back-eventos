@@ -7,6 +7,7 @@ const { enviarMail } = require('../../../utils/mail');
 const { templatePagoPlataformaPendiente } = require('../../../utils/mailTemplates');
 const { emitirAEvento } = require('../../../sockets/emitter');
 const EVENTOS_WS = require('../../../sockets/events');
+const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
 
 /**
  * Se llama después de crear un participante (fire and forget).
@@ -430,7 +431,9 @@ async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
 }
 
 async function listarTramos() {
-  return pagosRepository.listarTramos();
+  return getOrSet('tramos_precio', async () => {
+    return pagosRepository.listarTramos();
+  }, 3600);
 }
 
 async function listarPagosEvento(eventoId, orgId) {
