@@ -163,6 +163,16 @@ async function crearParticipante(orgId, datos) {
       throw error;
     }
 
+    // Verificar cupo máximo
+    if (evento.cupo_maximo !== null && evento.cupo_maximo !== undefined) {
+      const cantidadActual = await participantesRepository.contarPorEvento(evento.id);
+      if (cantidadActual >= evento.cupo_maximo) {
+        const error = new Error(`El evento está completo. Cupo máximo de ${evento.cupo_maximo} ${evento.cupo_maximo === 1 ? 'inscripto' : 'inscriptos'} alcanzado.`);
+        error.status = 409;
+        throw error;
+      }
+    }
+
     // Si no viene orgId (inscripción pública sin X-Org-Id), lo tomamos del evento
     const orgIdFinal = orgId ?? evento.org_id;
 

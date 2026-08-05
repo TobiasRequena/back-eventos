@@ -39,6 +39,7 @@ const crearEventoSchema = z.object({
       aliasCobro: z.string().max(50).optional(),
       costo: z.number().nonnegative().default(0),
       camposForm: z.array(campoFormSchema).optional().default([]),
+      cupoMaximo: z.number().int().positive().nullable().optional(),
       // Reemplaza al viejo array plano `talleres` — ahora cada elemento
       // es un bloque con sus talleres adentro (ver nota en MODELO_DATOS.md
       // sobre bloque_taller).
@@ -72,6 +73,7 @@ const editarEventoSchema = z.object({
     aliasCobro: z.string().max(50).optional(),
     costo: z.number().nonnegative().optional(),
     inscripcionesCerradas: z.boolean().optional(),
+    cupoMaximo: z.number().int().positive().nullable().optional(),
   }),
 });
 

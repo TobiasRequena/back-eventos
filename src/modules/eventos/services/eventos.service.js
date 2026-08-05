@@ -62,6 +62,7 @@ async function crearEvento(orgId, usuarioId, datos) {
         cbuCvu: datos.cbuCvu,
         aliasCobro: datos.aliasCobro,
         costo: datos.costo,
+        cupoMaximo: datos.cupoMaximo,
       },
       trx
     );
@@ -237,6 +238,7 @@ async function editarEvento(id, orgId, datos) {
   if (datos.aliasCobro !== undefined) datosDb.alias_cobro = datos.aliasCobro;
   if (datos.costo !== undefined) datosDb.costo = datos.costo;
   if (datos.inscripcionesCerradas !== undefined) datosDb.inscripciones_cerradas = datos.inscripcionesCerradas;
+  if (datos.cupoMaximo !== undefined) datosDb.cupo_maximo = datos.cupoMaximo;
 
   return eventosRepository.actualizar(id, datosDb);
 }
