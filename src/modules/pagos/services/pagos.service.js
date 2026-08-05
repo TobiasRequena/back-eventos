@@ -222,6 +222,9 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
 
     await trx('pago').where({ id: pago.id }).update({ estado: 'aprobado' });
 
+    invalidar(`evento:${pago.evento_id}`);
+    invalidar(`admin:stats:${pago.evento_id}`);
+
     const participantesPendientes = await trx('participante')
       .where({ evento_id: pago.evento_id, estado_alta_plataforma: 'pendiente_pago_org' })
       .select('*');

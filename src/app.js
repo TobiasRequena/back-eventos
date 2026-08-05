@@ -35,6 +35,8 @@ const {
 } = require('./modules/acreditacion/routes/acreditacion.routes');
 const routerPagos = require('./modules/pagos/routes/pagos.routes');
 const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
+const routerSoporte = require('./modules/soporte/routes/soporte.routes');
+const routerAdmin = require('./modules/admin/routes/admin.routes');
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -112,6 +114,12 @@ app.use('/api/v1/pagos', routerPagos);
 
 //Grupos de Trabajo
 app.use('/api/v1/eventos/:eventoId/esquemas-grupos-trabajo', routerGruposTrabajo);
+
+//Soporte
+app.use('/api/v1/soporte', routerSoporte);
+
+//Admin
+app.use('/api/v1/admin', routerAdmin);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

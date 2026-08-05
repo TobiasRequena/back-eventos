@@ -1,4 +1,5 @@
 const { db } = require('../../../config/db');
+const { invalidar } = require('../../../utils/cache');
 
 /**
  * Busca el tramo correspondiente a una cantidad de participantes.
@@ -38,6 +39,9 @@ async function aprobarPago(referenceId, trx = db) {
     .where({ ref_pasarela: referenceId }) // busca por referenceId
     .update({ estado: 'aprobado' })
     .returning('*');
+
+  invalidar(`evento:${pago.evento_id}`);
+  invalidar(`admin:stats:${pago.evento_id}`);
   return pago;
 }
 
