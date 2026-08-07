@@ -21,4 +21,18 @@ const loginSchema = z.object({
     }),
 });
 
-module.exports = { registerSchema, loginSchema };
+const recuperarContrasenaSchema = z.object({
+    body: z.object({
+        email: z.string().email('Email inválido'),
+    }),
+});
+
+const resetContrasenaSchema = z.object({
+    body: z.object({
+        email: z.string().email('Email inválido'),
+        codigo: z.string().length(6, 'El código debe tener 6 dígitos'),
+        nuevaContrasena: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+    }),
+});
+
+module.exports = { registerSchema, loginSchema, recuperarContrasenaSchema, resetContrasenaSchema };

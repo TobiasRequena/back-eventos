@@ -11,7 +11,7 @@ function templateConfirmacionInscripcion({ participante, evento }) {
   });
 
   return {
-    subject: `✅ Inscripción confirmada — ${evento.nombre}`,
+    subject: `Inscripción confirmada — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -64,7 +64,7 @@ function templateConfirmacionInscripcion({ participante, evento }) {
 
 function templateVinculoAceptado({ participante, grupo, evento }) {
   return {
-    subject: `✅ Tu solicitud al grupo "${grupo.nombre}" fue aceptada`,
+    subject: `Tu solicitud al grupo "${grupo.nombre}" fue aceptada`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -96,7 +96,7 @@ function templateVinculoAceptado({ participante, grupo, evento }) {
 
 function templateVinculoRechazado({ participante, grupo, evento }) {
   return {
-    subject: `❌ Tu solicitud al grupo "${grupo.nombre}" fue rechazada`,
+    subject: `Tu solicitud al grupo "${grupo.nombre}" fue rechazada`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -125,7 +125,7 @@ function templateSolicitudPendiente({ responsable, participante, grupo }) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
   return {
-    subject: `📋 Nueva solicitud de ingreso al grupo "${grupo.nombre}"`,
+    subject: `Nueva solicitud de ingreso al grupo "${grupo.nombre}"`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -169,7 +169,7 @@ function templateInfoGrupoResponsable({ responsable, grupo, evento }) {
   });
 
   return {
-    subject: `👥 Información de tu grupo — ${evento.nombre}`,
+    subject: `Información de tu grupo — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -224,7 +224,7 @@ function templateInfoGrupoResponsable({ responsable, grupo, evento }) {
 
 function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, cantidadParticipantes }) {
   return {
-    subject: `💳 Pago pendiente — ${evento.nombre}`,
+    subject: `Pago pendiente — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -263,7 +263,7 @@ function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, 
 
 function templateAsignacionGrupo({ participante, grupo, evento }) {
   return {
-    subject: `📋 Tu grupo de trabajo — ${evento.nombre}`,
+    subject: `Tu grupo de trabajo — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -292,6 +292,42 @@ function templateAsignacionGrupo({ participante, grupo, evento }) {
   };
 }
 
+function templateRecuperarContrasena({ nombre, codigo }) {
+  return {
+    subject: 'Código de recuperación — Talita Encuentros',
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+        
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Recuperar contraseña
+        </h1>
+
+        <p>Hola <strong>${nombre}</strong>,</p>
+        <p>Tu código de recuperación es:</p>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <span style="font-size: 42px; font-weight: bold; letter-spacing: 8px; color: #1E3A5F;">
+            ${codigo}
+          </span>
+        </div>
+
+        <p style="color: #6b7280; font-size: 13px;">
+          Este código expira en <strong>15 minutos</strong>. Si no solicitaste este cambio, ignorá este mail.
+        </p>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+
+      </body>
+      </html>
+    `,
+  };
+}
+
 module.exports = {
   templateConfirmacionInscripcion,
   templateVinculoAceptado,
@@ -299,5 +335,6 @@ module.exports = {
   templateSolicitudPendiente,
   templateInfoGrupoResponsable,
   templatePagoPlataformaPendiente,
-  templateAsignacionGrupo
+  templateAsignacionGrupo,
+  templateRecuperarContrasena
 };

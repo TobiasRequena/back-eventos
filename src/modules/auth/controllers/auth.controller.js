@@ -54,4 +54,23 @@ async function me(req, res, next) {
   }
 }
 
-module.exports = { register, login, me };
+async function recuperarContrasena(req, res, next) {
+  try {
+    await authService.solicitarRecuperacion(req.body.email);
+    // Respuesta genérica siempre — no revelar si el email existe
+    res.status(200).json({ mensaje: 'Si el email existe en el sistema, recibirás un link para restablecer tu contraseña.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function resetContrasena(req, res, next) {
+  try {
+    await authService.resetContrasena(req.body.email, req.body.codigo, req.body.nuevaContrasena);
+    res.status(200).json({ mensaje: 'Contraseña actualizada correctamente.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { register, login, me, recuperarContrasena, resetContrasena };

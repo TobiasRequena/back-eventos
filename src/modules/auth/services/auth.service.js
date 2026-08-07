@@ -1,8 +1,10 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
 const { db } = require('../../../config/db');
 const authRepository = require('../repositories/auth.repository');
+const crypto = require('crypto');
+const { enviarMail } = require('../../../utils/mail');
+const { templateRecuperarContrasena } = require('../../../utils/mailTemplates');
 
 const SALT_ROUNDS = 10; // costo del hash — 10 es un estándar razonable, ni muy lento ni inseguro
 
@@ -147,4 +149,58 @@ function sanitizarUsuario(usuario) {
   return resto;
 }
 
-module.exports = { registrar, iniciarSesion, obtenerPerfil };
+async function solicitarRecuperacion(email) {
+  const usuario = await db('usuario').where({ email }).first();
+  if (!usuario) return; // respuesta genérica — no revelar si el email existe
+
+  // Invalidar códigos anteriores
+  await db('reset_password_token')
+    .where({ usuario_id: usuario.id, usado: false })
+    .update({ usado: true });
+
+  // Generar OTP de 6 dígitos
+  const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiraEn = new Date();
+  expiraEn.setMinutes(expiraEn.getMinutes() + 15);
+
+  await db('reset_password_token').insert({
+    usuario_id: usuario.id,
+    token: codigo,
+    expira_en: expiraEn,
+  });
+
+  const { subject, html } = templateRecuperarContrasena({
+    nombre: usuario.nombre,
+    codigo,
+  });
+
+  enviarMail({ to: email, subject, html });
+}
+
+async function resetContrasena(email, codigo, nuevaContrasena) {
+  const usuario = await db('usuario').where({ email }).first();
+  if (!usuario) {
+    const error = new Error('Código inválido'); error.status = 400; throw error;
+  }
+
+  const registro = await db('reset_password_token')
+    .where({ usuario_id: usuario.id, token: codigo, usado: false })
+    .first();
+
+  if (!registro) {
+    const error = new Error('Código inválido o ya utilizado'); error.status = 400; throw error;
+  }
+
+  if (new Date() > new Date(registro.expira_en)) {
+    const error = new Error('El código expiró. Solicitá uno nuevo.'); error.status = 400; throw error;
+  }
+
+  const hash = await bcrypt.hash(nuevaContrasena, 10);
+
+  await db.transaction(async (trx) => {
+    await trx('usuario').where({ id: usuario.id }).update({ contrasena_hash: hash });
+    await trx('reset_password_token').where({ id: registro.id }).update({ usado: true });
+  });
+}
+
+module.exports = { registrar, iniciarSesion, obtenerPerfil, solicitarRecuperacion, resetContrasena };

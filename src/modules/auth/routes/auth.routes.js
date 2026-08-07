@@ -5,6 +5,10 @@ const authController = require('../controllers/auth.controller');
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const { registerSchema, loginSchema } = require('../schemas/auth.schema');
+const { recuperarContrasenaSchema, resetContrasenaSchema } = require('../schemas/auth.schema');
+
+router.post('/recuperar-contrasena', validate(recuperarContrasenaSchema), authController.recuperarContrasena);
+router.post('/reset-contrasena', validate(resetContrasenaSchema), authController.resetContrasena);
 
 // POST /api/v1/auth/register — público, valida el body con Zod antes de llegar al controller
 router.post('/register', validate(registerSchema), authController.register);
