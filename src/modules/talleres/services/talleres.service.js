@@ -9,6 +9,7 @@ const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cac
 const ESTADO_PAGO_LABELS = {
   no_aplica: 'Sin costo',
   pendiente: 'Pendiente',
+  pendiente_aprobacion: 'Comprobante enviado',
   aprobado: 'Aprobado',
   rechazado: 'Rechazado',
 };
@@ -92,16 +93,16 @@ async function obtenerBloque(id, orgId) {
  * talleres individuales dentro del bloque.
  */
 async function editarBloque(id, orgId, datos) {
-  await obtenerBloque(id, orgId);
-
+  const bloque = await obtenerBloque(id, orgId); // ← ya tenemos el bloque
   const datosDb = {};
   if (datos.nombre !== undefined) datosDb.nombre = datos.nombre;
   if (datos.cantidadElegible !== undefined) datosDb.cantidad_elegible = datos.cantidadElegible;
   if (datos.esObligatorio !== undefined) datosDb.es_obligatorio = datos.esObligatorio;
   if (datos.orden !== undefined) datosDb.orden = datos.orden;
-
-  invalidarPorPrefijo(`bloques:${eventoId}`);
-  invalidarPorPrefijo(`participantes:evento:${eventoId}`);
+  if (datos.inicio !== undefined) datosDb.inicio = datos.inicio;
+  if (datos.fin !== undefined) datosDb.fin = datos.fin;
+  invalidarPorPrefijo(`bloques:${bloque.evento_id}`); // ← usar bloque.evento_id
+  invalidarPorPrefijo(`participantes:evento:${bloque.evento_id}`);
   return talleresRepository.actualizarBloque(id, datosDb);
 }
 
@@ -113,20 +114,14 @@ async function editarBloque(id, orgId, datos) {
  */
 async function eliminarBloque(id, orgId) {
   const bloque = await obtenerBloque(id, orgId);
-
   const talleresDelBloque = await talleresRepository.listarBloquesPorEvento(bloque.evento_id);
   const esteBloque = talleresDelBloque.find((b) => b.id === id);
-
   if (esteBloque && esteBloque.talleres.length > 0) {
-    const error = new Error(
-      'No se puede eliminar un bloque que todavía tiene talleres. Eliminá o reasigná los talleres primero.'
-    );
-    error.status = 409;
-    throw error;
+    const error = new Error('No se puede eliminar un bloque que todavía tiene talleres.');
+    error.status = 409; throw error;
   }
-
-  invalidarPorPrefijo(`bloques:${eventoId}`);
-  invalidarPorPrefijo(`participantes:evento:${eventoId}`);
+  invalidarPorPrefijo(`bloques:${bloque.evento_id}`); // ← usar bloque.evento_id
+  invalidarPorPrefijo(`participantes:evento:${bloque.evento_id}`);
   await talleresRepository.eliminarBloque(id);
 }
 
@@ -168,13 +163,15 @@ async function obtenerTaller(id, orgId) {
 async function editarTaller(id, orgId, datos) {
   const taller = await obtenerTaller(id, orgId);
 
-  const inicioFinal = datos.inicio ?? taller.inicio;
-  const finFinal = datos.fin ?? taller.fin;
-
-  if (new Date(finFinal) <= new Date(inicioFinal)) {
-    const error = new Error('fin debe ser posterior a inicio');
-    error.status = 400;
-    throw error;
+  // Solo validar inicio/fin si el taller es suelto (sin bloque)
+  // o si se están editando las fechas
+  if (!taller.bloque_taller_id || datos.inicio || datos.fin) {
+    const inicioFinal = datos.inicio ?? taller.inicio;
+    const finFinal = datos.fin ?? taller.fin;
+    if (inicioFinal && finFinal && new Date(finFinal) <= new Date(inicioFinal)) {
+      const error = new Error('fin debe ser posterior a inicio');
+      error.status = 400; throw error;
+    }
   }
 
   const datosDb = {};
@@ -184,7 +181,9 @@ async function editarTaller(id, orgId, datos) {
   if (datos.fin !== undefined) datosDb.fin = datos.fin;
   if (datos.capacidad !== undefined) datosDb.capacidad = datos.capacidad;
   if (datos.lugarId !== undefined) datosDb.lugar_id = datos.lugarId;
+  if (datos.esObligatorio !== undefined) datosDb.es_obligatorio = datos.esObligatorio;
 
+  invalidarPorPrefijo(`bloques:${taller.evento_id}`);
   return talleresRepository.actualizar(id, datosDb);
 }
 
@@ -198,6 +197,26 @@ async function editarTaller(id, orgId, datos) {
 async function eliminarTaller(id, orgId) {
   await obtenerTaller(id, orgId);
   await talleresRepository.eliminar(id);
+}
+
+async function crearTallerSuelto(eventoId, orgId, datos) {
+  await verificarEventoDeLaOrg(eventoId, orgId);
+
+  const [taller] = await db('taller').insert({
+    org_id: orgId,
+    evento_id: eventoId,
+    nombre: datos.nombre,
+    descripcion: datos.descripcion ?? null,
+    inicio: datos.inicio,
+    fin: datos.fin,
+    capacidad: datos.capacidad ?? null,
+    lugar_id: datos.lugarId ?? null,
+    bloque_taller_id: null,
+    es_obligatorio: datos.esObligatorio ?? false,
+  }).returning('*');
+
+  invalidarPorPrefijo(`bloques:${eventoId}`);
+  return taller;
 }
 
 async function listarInscriptos(tallerId, orgId) {
@@ -252,19 +271,20 @@ async function asignarParticipante(tallerId, orgId, participanteId) {
       }
     }
 
-    const bloque = await talleresRepository.buscarBloquePorId(taller.bloque_taller_id, trx);
-    const yaElegidos = await talleresRepository.contarInscripcionesDelParticipanteEnBloque(
-      participanteId,
-      bloque.id,
-      trx
-    );
-
-    if (yaElegidos >= bloque.cantidad_elegible) {
-      const error = new Error(
-        `Ya elegiste el máximo de talleres permitidos para el bloque "${bloque.nombre}" (${bloque.cantidad_elegible})`
+    // Reemplazá el bloque de validación del bloque:
+    if (taller.bloque_taller_id) {
+      const bloque = await talleresRepository.buscarBloquePorId(taller.bloque_taller_id, trx);
+      const yaElegidos = await talleresRepository.contarInscripcionesDelParticipanteEnBloque(
+        participanteId,
+        bloque.id,
+        trx
       );
-      error.status = 409;
-      throw error;
+      if (yaElegidos >= bloque.cantidad_elegible) {
+        const error = new Error(
+          `Ya elegiste el máximo de talleres permitidos para el bloque "${bloque.nombre}" (${bloque.cantidad_elegible})`
+        );
+        error.status = 409; throw error;
+      }
     }
 
     return talleresRepository.asignarParticipante({ participanteId, tallerId, orgId }, trx);
@@ -421,6 +441,7 @@ module.exports = {
   obtenerTaller,
   editarTaller,
   eliminarTaller,
+  crearTallerSuelto,
   listarInscriptos,
   asignarParticipante,
   desasignarParticipante,

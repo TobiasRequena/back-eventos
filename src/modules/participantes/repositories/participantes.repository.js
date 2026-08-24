@@ -13,7 +13,16 @@ async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
 }
 
 async function buscarPorId(id, trx = db) {
-  return trx('participante').where({ id }).first();
+  return trx('participante')
+    .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .where('participante.id', id)
+    .select(
+      'participante.*',
+      db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
+    )
+    .first();
 }
 
 async function buscarPorEmailEnEvento(email, eventoId, trx = db) {
@@ -31,6 +40,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
   const query = db('participante')
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', true) // ← solo activos por defecto
     .select(
@@ -40,7 +50,10 @@ async function listarPorEvento(eventoId, filtros = {}) {
         THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
         ELSE NULL END as grupo
       `),
-      db.raw('(checkin.id IS NOT NULL) as acreditado')
+      db.raw('(checkin.id IS NOT NULL) as acreditado'),
+      db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
     );
 
   if (filtros.grupoId) query.andWhere('participante.grupo_id', filtros.grupoId);
@@ -54,6 +67,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
 async function listarEliminadosPorEvento(eventoId) {
   return db('participante')
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
+    .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', false)
     .select(
@@ -62,7 +76,10 @@ async function listarEliminadosPorEvento(eventoId) {
         CASE WHEN participante.grupo_id IS NOT NULL
         THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
         ELSE NULL END as grupo
-      `)
+      `),
+      db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
     )
     .orderBy('participante.eliminado_en', 'desc');
 }
@@ -151,6 +168,14 @@ async function buscarPorQr(qrPersonal, trx = db) {
   return trx('participante').where({ qr_personal: qrPersonal }).first();
 }
 
+async function buscarPorDniYEvento(dni, eventoId) {
+  const hash = hashDni(dni);
+  return db('participante')
+    .where({ dni_hash: hash, evento_id: eventoId, activo: true })
+    .select('id', 'nombre', 'apellido', 'estado_pago')
+    .first();
+}
+
 module.exports = {
   buscarPorDniEnEvento,
   buscarPorId,
@@ -162,5 +187,6 @@ module.exports = {
   buscarPorQr,
   buscarPorEmailEnEvento,
   listarEliminadosPorEvento,
-  purgarEliminados
+  purgarEliminados,
+  buscarPorDniYEvento
 };

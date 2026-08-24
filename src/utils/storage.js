@@ -1,12 +1,16 @@
-/**
- * Construye la URL pública de un archivo en el bucket, a partir de su key.
- * Se usa desde cualquier módulo que necesite mostrar una imagen/archivo
- * guardado en R2 (archivos, eventos, y a futuro participantes con sus comprobantes).
- */
 function construirUrlPublica(key) {
   if (!key) return null;
-  const dominioPublico = process.env.S3_PUBLIC_URL;
-  if (!dominioPublico) return null;
+  if (typeof key !== 'string') return null;
+  if (key.startsWith('http://') || key.startsWith('https://')) return key;
+
+  const dominioPublico =
+    process.env.S3_PUBLIC_URL ||
+    (process.env.S3_ENDPOINT && process.env.S3_BUCKET ? `${process.env.S3_ENDPOINT}/${process.env.S3_BUCKET}` : null);
+
+  if (!dominioPublico) {
+    return `/${key}`;
+  }
+
   return `${dominioPublico}/${key}`;
 }
 

@@ -10,10 +10,12 @@ const { desencriptar } = require('../../../utils/encryption');
 const { calcularEdad } = require('../../participantes/services/participantes.service');
 const { construirUrlPublica } = require('../../../utils/storage');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const sanitizarParticipante = require('../../../utils/sanitizarParticipante')
 
 const ESTADO_PAGO_LABELS = {
   no_aplica: 'Sin costo',
   pendiente: 'Pendiente',
+  pendiente_aprobacion: 'Comprobante enviado',
   aprobado: 'Aprobado',
   rechazado: 'Rechazado',
 };
@@ -63,6 +65,10 @@ async function crearEvento(orgId, usuarioId, datos) {
         aliasCobro: datos.aliasCobro,
         costo: datos.costo,
         cupoMaximo: datos.cupoMaximo,
+        requiereAutorizacionMenores: datos.requiereAutorizacionMenores,
+        configFichaMedica: datos.configFichaMedica,
+        configCertificado: datos.configCertificado,
+        autorizacionTemplateUrl: datos.autorizacionTemplateUrl,
       },
       trx
     );
@@ -84,6 +90,16 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
+    let talleresCreados = [];
+    if (datos.talleresSueltos?.length > 0) {
+      talleresCreados = await talleresRepository.crearTalleresSueltos(
+        evento.id,
+        orgId,
+        datos.talleresSueltos,
+        trx
+      );
+    }
+
     return {
       evento,
       camposForm: camposCreados,
@@ -93,6 +109,7 @@ async function crearEvento(orgId, usuarioId, datos) {
       // Cuando exista el módulo `pagos`, este flag es lo que va a disparar
       // la creación del registro de pago correspondiente.
       bloquesTaller: bloquesCreados,
+      talleresSueltos: talleresCreados,
       esPrimerEventoGratis: esPrimerEvento,
     };
   });
@@ -171,18 +188,20 @@ async function obtenerEvento(id, orgId) {
       throw error;
     }
 
-    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente] = await Promise.all([
+    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
       formulariosRepository.listarPorEvento(evento.id),
       talleresRepository.listarBloquesPorEvento(evento.id),
       archivosRepository.buscarPortadaDeEvento(evento.id),
       participantesRepository.contarPorEvento(evento.id),
       pagosRepository.buscarPagoPendientePorEvento(evento.id),
+      talleresRepository.listarTalleresSueltosPorEvento(evento.id),
     ]);
 
     return {
       ...evento,
       camposForm,
       bloquesTaller,
+      talleresSueltos,
       cantidadInscriptos,
       imagenUrl: construirUrlPublica(portada?.key),
       pagoPlatforma: pagoPendiente
@@ -239,6 +258,10 @@ async function editarEvento(id, orgId, datos) {
   if (datos.costo !== undefined) datosDb.costo = datos.costo;
   if (datos.inscripcionesCerradas !== undefined) datosDb.inscripciones_cerradas = datos.inscripcionesCerradas;
   if (datos.cupoMaximo !== undefined) datosDb.cupo_maximo = datos.cupoMaximo;
+  if (datos.requiereAutorizacionMenores !== undefined) datosDb.requiere_autorizacion_menores = datos.requiereAutorizacionMenores;
+  if (datos.configFichaMedica !== undefined) datosDb.config_ficha_medica = datos.configFichaMedica;
+  if (datos.configCertificado !== undefined) datosDb.config_certificado = datos.configCertificado;
+  if (datos.autorizacionTemplateUrl !== undefined) datosDb.autorizacion_template_url = datos.autorizacionTemplateUrl;
 
   return eventosRepository.actualizar(id, datosDb);
 }
@@ -274,10 +297,11 @@ async function buscarPorCodigoPublico(codigo) {
   // porque el formulario de inscripción necesita esos datos para renderizarse.
   // No traemos cantidadInscriptos ni imagenUrl porque este endpoint es público
   // y no necesita esos datos para el flujo de inscripción.
-  const [camposForm, bloquesTaller, portada] = await Promise.all([
+  const [camposForm, bloquesTaller, portada, talleresSueltos] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
+    talleresRepository.listarTalleresSueltosPorEvento(evento.id),
   ]);
 
   return {
@@ -285,6 +309,7 @@ async function buscarPorCodigoPublico(codigo) {
     imagenUrl: portada ? construirUrlPublica(portada.key) : null,
     camposForm,
     bloquesTaller,
+    talleresSueltos,
   };
 }
 
@@ -320,17 +345,24 @@ async function obtenerStats(id, orgId) {
   if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
   return getOrSet(`stats:evento:${id}`, async () => {
-    const [totalInscriptos, bloques, campos, filas] = await Promise.all([
+    const [totalInscriptos, bloques, campos, filas, talleresSueltos, resumenPagos, kpisFicha, cantidadAcreditados] = await Promise.all([
       eventosRepository.contarInscriptos(id),
       talleresRepository.listarBloquesPorEvento(id),
       formulariosRepository.listarPorEvento(id),
       eventosRepository.listarRespuestasForm(id),
+      talleresRepository.listarTalleresSueltosPorEvento(id),
+      eventosRepository.resumenPagos(id),
+      eventosRepository.kpisFichaMedica(id),
+      eventosRepository.contarAcreditados(id), // ← nuevo
     ]);
 
+    // Bloques con conteo de inscriptos por taller
     const bloquesConStats = await Promise.all(
       bloques.map(async (bloque) => ({
         id: bloque.id,
         nombre: bloque.nombre,
+        inicio: bloque.inicio,
+        fin: bloque.fin,
         cantidad_elegible: bloque.cantidad_elegible,
         es_obligatorio: bloque.es_obligatorio,
         talleres: await Promise.all(
@@ -344,8 +376,21 @@ async function obtenerStats(id, orgId) {
       }))
     );
 
-    const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
+    // Talleres sueltos con conteo
+    const talleresSueltosConStats = await Promise.all(
+      talleresSueltos.map(async (taller) => ({
+        id: taller.id,
+        nombre: taller.nombre,
+        inicio: taller.inicio,
+        fin: taller.fin,
+        capacidad: taller.capacidad,
+        es_obligatorio: taller.es_obligatorio,
+        inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
+      }))
+    );
 
+    // Campos de formulario
+    const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
     const camposFormStats = campos
       .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
       .map((campo) => {
@@ -358,7 +403,6 @@ async function obtenerStats(id, orgId) {
         }
         const totalRespuestas = valores.length;
         let stats = {};
-
         switch (campo.tipo) {
           case 'seleccion':
           case 'booleano': {
@@ -373,17 +417,15 @@ async function obtenerStats(id, orgId) {
             break;
           }
           case 'texto': {
-            // ← Todas las respuestas normalizadas, no solo top 5
             const conteo = {};
             for (const v of valores) {
               const clave = String(v).trim().toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, ''); // quitar acentos
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
               conteo[clave] = (conteo[clave] || 0) + 1;
             }
             stats.respuestasFrecuentes = Object.entries(conteo)
               .map(([valor, cantidad]) => ({ valor, cantidad }))
-              .sort((a, b) => b.cantidad - a.cantidad); // ← sin .slice(0, 5)
+              .sort((a, b) => b.cantidad - a.cantidad);
             break;
           }
           case 'numero': {
@@ -404,22 +446,20 @@ async function obtenerStats(id, orgId) {
             break;
           }
         }
-
-        return {
-          id: campo.id,
-          etiqueta: campo.etiqueta,
-          tipo: campo.tipo,
-          totalRespuestas,
-          ...stats,
-        };
+        return { id: campo.id, etiqueta: campo.etiqueta, tipo: campo.tipo, totalRespuestas, ...stats };
       });
 
     return {
+      cupoMaximo: evento.cupo_maximo,
       totalInscriptos,
+      cantidadAcreditados,
       bloquesTaller: bloquesConStats,
+      talleresSueltos: talleresSueltosConStats,
+      resumenPagos,
+      kpisFichaMedica: kpisFicha,
       camposFormStats,
     };
-  }, 900); // 15 minutos
+  }, 900);
 }
 
 async function generarExcelInscriptos(id, orgId) {
@@ -634,6 +674,23 @@ function eventoEstaCerrado(evento) {
   return new Date() > fechaCierre;
 }
 
+async function listarPendientesPago(id, orgId) {
+  const evento = await eventosRepository.buscarPorId(id);
+  if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
+  if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
+
+  const participantes = await participantesRepository.listarPorEvento(id, { estadoPago: 'pendiente_aprobacion' });
+  return participantes.map(p => sanitizarParticipante(p, 'admin'));
+}
+
+async function listarFichasMedicas(id, orgId) {
+  const evento = await eventosRepository.buscarPorId(id);
+  if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
+  if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
+
+  return eventosRepository.listarFichasMedicasRelevantes(id);
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -645,5 +702,7 @@ module.exports = {
   obtenerStats,
   generarExcelInscriptos,
   obtenerStatsInscripciones,
-  eventoEstaCerrado
+  eventoEstaCerrado,
+  listarPendientesPago,
+  listarFichasMedicas,
 };

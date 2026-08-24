@@ -12,10 +12,24 @@ const subirArchivoSchema = z.object({
   }),
 });
 
+const subirPortadaSchema = z.object({
+  body: z.object({
+    orgId: z.string().uuid('orgId es obligatorio'),
+    eventoId: z.string().uuid(),
+  }),
+});
+
+const subirComprobanteSchema = z.object({
+  body: z.object({
+    participanteId: z.string().uuid('participanteId es obligatorio'),
+    eventoId: z.string().uuid().optional(),
+  }),
+});
+
 const idParamSchema = z.object({
   params: z.object({
     id: z.string().uuid('Id de archivo inválido'),
   }),
 });
 
-module.exports = { subirArchivoSchema, idParamSchema, CONTEXTO_ARCHIVO };
+module.exports = { subirArchivoSchema, idParamSchema, subirPortadaSchema, subirComprobanteSchema, CONTEXTO_ARCHIVO };

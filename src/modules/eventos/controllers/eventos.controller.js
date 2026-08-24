@@ -129,4 +129,31 @@ async function statsInscripciones(req, res, next) {
   }
 }
 
-module.exports = { crear, listar, obtener, editar, eliminar, buscarPorCodigo, verificarDisponibilidadCodigo, stats, descargarExcel, statsInscripciones };
+async function listarPendientesPago(req, res, next) {
+  try {
+    const participantes = await eventosService.listarPendientesPago(req.params.id, req.orgId);
+    res.status(200).json({ participantes });
+  } catch (error) { next(error); }
+}
+
+async function listarFichasMedicas(req, res, next) {
+  try {
+    const fichas = await eventosService.listarFichasMedicas(req.params.id, req.orgId);
+    res.status(200).json({ fichas });
+  } catch (error) { next(error); }
+}
+
+module.exports = {
+  crear,
+  listar,
+  obtener,
+  editar,
+  eliminar,
+  buscarPorCodigo,
+  verificarDisponibilidadCodigo,
+  stats,
+  descargarExcel,
+  statsInscripciones,
+  listarPendientesPago,
+  listarFichasMedicas
+};

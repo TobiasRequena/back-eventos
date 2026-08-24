@@ -7,9 +7,19 @@ const { db } = require('../../../config/db');
  * el service, no esta capa).
  */
 async function crear(datos, trx = db) {
+  let orgId = datos.orgId; // ← declarar primero
+
+  if (!orgId && datos.participanteId) {
+    const participante = await trx('participante')
+      .where({ id: datos.participanteId })
+      .select('org_id')
+      .first();
+    orgId = participante?.org_id;
+  }
+
   const [archivo] = await trx('archivo')
     .insert({
-      org_id: datos.orgId,
+      org_id: orgId, // ← usar la variable, no datos.orgId
       evento_id: datos.eventoId ?? null,
       participante_id: datos.participanteId ?? null,
       subido_por_usuario_id: datos.subidoPorUsuarioId ?? null,
@@ -36,11 +46,13 @@ async function buscarPorId(id, trx = db) {
  * por si en algún momento se reemplaza la portada y queda más de uno
  * histórico — nos interesa siempre el último).
  */
-async function buscarPortadaDeEvento(eventoId) {
-  return db('archivo')
+async function buscarPortadaDeEvento(eventoId, trx = db) {
+  const resultado = await trx('archivo')
     .where({ evento_id: eventoId })
-    .orderBy('creado_en', 'desc')
+    .whereNull('participante_id')
+    .whereRaw("key LIKE 'portada_evento/%'")
     .first();
+  return resultado;
 }
 
 async function eliminar(id, trx = db) {

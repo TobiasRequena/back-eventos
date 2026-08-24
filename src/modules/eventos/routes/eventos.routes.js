@@ -44,5 +44,7 @@ router.patch('/:id', validate(editarEventoSchema), eventosController.editar);
 router.delete('/:id', validate(idParamSchema), eventosController.eliminar);
 router.get('/:id/stats', validate(idParamSchema), eventosController.stats);
 router.get('/:id/inscriptos/excel', validate(idParamSchema), eventosController.descargarExcel);
+router.get('/:id/participantes/pendientes-pago', autenticar, resolverOrganizacionActiva, eventosController.listarPendientesPago);
+router.get('/:id/fichas-medicas', autenticar, resolverOrganizacionActiva, eventosController.listarFichasMedicas);
 
 module.exports = router;

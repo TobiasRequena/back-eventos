@@ -10,6 +10,7 @@ const {
   routerTalleresEnBloque,
   routerBloquesPlano,
   routerTalleresPlano,
+  routerTalleresAnidado
 } = require('./modules/talleres/routes/talleres.routes');
 const routerOrganizaciones = require('./modules/organizaciones/routes/organizaciones.routes');
 const routerEventos = require('./modules/eventos/routes/eventos.routes');
@@ -86,6 +87,7 @@ app.use('/api/v1/eventos', routerBloquesAnidado);
 app.use('/api/v1/bloques-taller', routerTalleresEnBloque);
 app.use('/api/v1/bloques-taller', routerBloquesPlano);
 app.use('/api/v1/talleres', routerTalleresPlano);
+app.use('/api/v1/eventos', routerTalleresAnidado);
 
 // Archivos
 app.use('/api/v1/archivos', routerArchivos);

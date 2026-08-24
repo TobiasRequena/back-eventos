@@ -2,6 +2,7 @@ const { db } = require('../../../config/db');
 const pagosRepository = require('../repositories/pagos.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
+const gruposRepository = require('../../grupos/repositories/grupos.repository');
 const { crearPaymentLink, reembolsarPago } = require('../../../config/galiopay');
 const { enviarMail } = require('../../../utils/mail');
 const { templatePagoPlataformaPendiente } = require('../../../utils/mailTemplates');
@@ -264,9 +265,15 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
           dni: dniLegible,
         });
 
+        let grupo = null;
+        if (participanteActualizado.grupo_id) {
+          grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
+        }
+
         const { subject, html } = templateConfirmacionInscripcion({
-          participante: { ...participante, dni: dniLegible },
+          participante: { ...participanteActualizado, dni: datosParaMail.dni },
           evento,
+          grupo,
         });
 
         enviarMail({
@@ -465,11 +472,21 @@ async function listarPagosEvento(eventoId, orgId) {
   };
 }
 
+async function listarEventosActivos(orgId) {
+  return pagosRepository.listarEventosActivosConPago(orgId);
+}
+
+async function listarHistorial(orgId) {
+  return pagosRepository.listarHistorialPagos(orgId);
+}
+
 module.exports = {
   verificarYGenerarCargo,
   procesarWebhookAprobado,
   pagarTramoAdelantado,
   reenviarMailPago,
   listarTramos,
-  listarPagosEvento
+  listarPagosEvento,
+  listarEventosActivos,
+  listarHistorial
 };

@@ -36,6 +36,9 @@ const crearParticipanteSchema = z.object({
     // La validación profunda (tipos, requeridos, opciones) la hace el service
     // consultando campo_form en la base — Zod solo garantiza que sea un objeto.
     respuestasForm: z.record(z.unknown()).optional().default({}),
+
+    // Ficha médica opcional
+    fichaMedica: z.record(z.unknown()).nullable().optional(),
   }),
 });
 
@@ -75,6 +78,15 @@ const reenviarMailSchema = z.object({
   }),
 });
 
+const actualizarEstadoPagoSchema = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+  body: z.object({
+    estadoPago: z.enum(['pendiente', 'pendiente_aprobacion', 'aprobado', 'rechazado']),
+  }),
+});
+
 module.exports = {
   crearParticipanteSchema,
   editarParticipanteSchema,
@@ -84,5 +96,6 @@ module.exports = {
   ESTADO_VINCULO,
   ESTADO_PAGO,
   PAGADO_POR,
-  reenviarMailSchema
+  reenviarMailSchema,
+  actualizarEstadoPagoSchema,
 };

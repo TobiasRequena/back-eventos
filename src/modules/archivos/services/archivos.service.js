@@ -4,7 +4,9 @@ const sharp = require('sharp');
 
 const s3Client = require('../../../config/s3');
 const archivosRepository = require('../repositories/archivos.repository');
+const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const { construirUrlPublica } = require('../../../utils/storage');
+const { invalidar } = require('../../../utils/cache');
 
 const TIPOS_MIME_PERMITIDOS_IMAGEN = ['image/jpeg', 'image/png', 'image/webp'];
 const TIPOS_MIME_PERMITIDOS_COMPROBANTE = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -148,4 +150,31 @@ async function eliminarArchivo(id) {
   await _eliminarArchivoFisico(archivo);
 }
 
-module.exports = { subirArchivo, obtenerArchivo, eliminarArchivo };
+async function subirAutorizacionTemplate(file, eventoId, usuarioId) {
+  console.log('[autorizacion-template] eventoId:', eventoId);
+  console.log('[autorizacion-template] file:', file?.originalname, file?.mimetype);
+  if (file.mimetype !== 'application/pdf') {
+    const error = new Error('Solo se aceptan archivos PDF');
+    error.status = 400; throw error;
+  }
+
+  const key = `autorizacion-templates/${eventoId}.pdf`;
+  await s3Client.send(new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    Body: file.buffer,
+    ContentType: 'application/pdf',
+  }));
+
+  // Guardar URL en evento
+  await eventosRepository.actualizar(eventoId, {
+    autorizacion_template_url: construirUrlPublica(key),
+  });
+
+  // Invalidar caché
+  invalidar(`evento:${eventoId}`);
+
+  return construirUrlPublica(key);
+}
+
+module.exports = { subirArchivo, obtenerArchivo, eliminarArchivo, subirAutorizacionTemplate };

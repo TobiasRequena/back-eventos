@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { bloqueTallerSchema } = require('../../talleres/schemas/talleres.schema');
+const { tallerSueltoSchema } = require('../../talleres/schemas/talleres.schema');
 
 const POLITICA_MENOR = ['obligatorio', 'opcional', 'no_aplica'];
 const TIPO_CAMPO_FORM = ['texto', 'numero', 'fecha', 'seleccion', 'booleano'];
@@ -40,10 +41,12 @@ const crearEventoSchema = z.object({
       costo: z.number().nonnegative().default(0),
       camposForm: z.array(campoFormSchema).optional().default([]),
       cupoMaximo: z.number().int().positive().nullable().optional(),
-      // Reemplaza al viejo array plano `talleres` — ahora cada elemento
-      // es un bloque con sus talleres adentro (ver nota en MODELO_DATOS.md
-      // sobre bloque_taller).
       bloquesTaller: z.array(bloqueTallerSchema).optional().default([]),
+      talleresSueltos: z.array(tallerSueltoSchema).optional().default([]),
+      requiereAutorizacionMenores: z.boolean().optional().default(false),
+      configFichaMedica: z.string().optional().default('no'),
+      configCertificado: z.string().optional().default('no'),
+      autorizacionTemplateUrl: z.string().nullable().optional(),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
       message: 'fechaFin debe ser igual o posterior a fechaInicio',
@@ -74,6 +77,10 @@ const editarEventoSchema = z.object({
     costo: z.number().nonnegative().optional(),
     inscripcionesCerradas: z.boolean().optional(),
     cupoMaximo: z.number().int().positive().nullable().optional(),
+    requiereAutorizacionMenores: z.boolean().optional(),
+    configFichaMedica: z.string().optional(),
+    configCertificado: z.string().optional(),
+    autorizacionTemplateUrl: z.string().nullable().optional(),
   }),
 });
 

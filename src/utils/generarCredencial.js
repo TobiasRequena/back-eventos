@@ -1,74 +1,96 @@
 const { createCanvas, loadImage } = require('canvas');
 const QRCode = require('qrcode');
 
-/**
- * Genera una imagen de credencial con el QR, nombre del evento,
- * nombre del participante y DNI.
- * Devuelve un Buffer de la imagen PNG — listo para adjuntar al mail.
- */
-async function generarCredencial({ qrPersonal, nombreEvento, nombreParticipante, dni }) {
-  const WIDTH = 400;
-  const HEIGHT = 520;
+async function generarCredencial({ qrPersonal, nombreEvento, nombreParticipante, dni, esReferente = false }) {
+  // Renderizamos al doble de resolución para mejor calidad
+  const SCALE = 2;
+  const WIDTH = 400 * SCALE;
+  const HEIGHT = 580 * SCALE;
+
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
 
+  // Escalar todo
+  ctx.scale(SCALE, SCALE);
+
+  const W = 400;
+  const H = 580;
+
   // Fondo blanco
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillRect(0, 0, W, H);
 
-  // Franja superior azul
-  ctx.fillStyle = '#2563EB';
-  ctx.fillRect(0, 0, WIDTH, 70);
+  // Franja superior
+  ctx.fillStyle = '#1E3A5F';
+  ctx.fillRect(0, 0, W, 75);
 
-  // Título del evento en la franja
+  // Nombre del evento
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 18px Arial';
+  ctx.font = 'bold 17px Arial';
   ctx.textAlign = 'center';
-
-  // Si el nombre es largo, achicamos la fuente
-  const nombreEventoCorto = nombreEvento.length > 30
-    ? nombreEvento.slice(0, 30) + '...'
+  const nombreEventoCorto = nombreEvento.length > 32
+    ? nombreEvento.slice(0, 32) + '...'
     : nombreEvento;
-  ctx.fillText(nombreEventoCorto, WIDTH / 2, 30);
+  ctx.fillText(nombreEventoCorto, W / 2, 30);
 
-  ctx.font = '13px Arial';
-  ctx.fillText('Credencial de acceso', WIDTH / 2, 52);
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#BFDBFE';
+  ctx.fillText('Credencial de acceso', W / 2, 52);
 
-  // Generar QR como imagen y dibujarlo en el canvas
+  // QR
+  const qrSize = 240;
   const qrDataUrl = await QRCode.toDataURL(qrPersonal, {
-    width: 260,
+    width: qrSize * SCALE,
     margin: 1,
     color: { dark: '#1E3A5F', light: '#FFFFFF' },
   });
   const qrImage = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImage, (WIDTH - 260) / 2, 90, 260, 260);
+  ctx.drawImage(qrImage, (W - qrSize) / 2, 90, qrSize, qrSize);
+
+  // Texto bajo el QR según si es referente o no
+  ctx.font = '11px Arial';
+  ctx.fillStyle = '#6B7280';
+  ctx.textAlign = 'center';
+
+  if (esReferente) {
+    ctx.fillStyle = '#1E3A5F';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText('⭐ Credencial de Referente', W / 2, 350);
+    ctx.font = '10px Arial';
+    ctx.fillStyle = '#6B7280';
+    ctx.fillText('Al escanear este QR se acredita', W / 2, 368);
+    ctx.fillText('a vos y a todos los integrantes de tu grupo.', W / 2, 383);
+  } else {
+    ctx.fillText('Presentá este QR el día del evento', W / 2, 350);
+    ctx.fillText('para acreditarte.', W / 2, 365);
+  }
 
   // Separador
   ctx.strokeStyle = '#E5E7EB';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(40, 370);
-  ctx.lineTo(360, 370);
+  ctx.moveTo(40, 400);
+  ctx.lineTo(360, 400);
   ctx.stroke();
 
-  // Nombre del participante
+  // Nombre
   ctx.fillStyle = '#111827';
-  ctx.font = 'bold 20px Arial';
+  ctx.font = 'bold 19px Arial';
   ctx.textAlign = 'center';
-  const nombreCompleto = nombreParticipante.length > 28
+  const nombreCorto = nombreParticipante.length > 28
     ? nombreParticipante.slice(0, 28) + '...'
     : nombreParticipante;
-  ctx.fillText(nombreCompleto, WIDTH / 2, 410);
+  ctx.fillText(nombreCorto, W / 2, 435);
 
   // DNI
   ctx.fillStyle = '#6B7280';
-  ctx.font = '14px Arial';
-  ctx.fillText(`DNI: ${dni}`, WIDTH / 2, 440);
+  ctx.font = '13px Arial';
+  ctx.fillText(`DNI: ${dni}`, W / 2, 460);
 
-  // Texto inferior
+  // Pie
   ctx.fillStyle = '#9CA3AF';
-  ctx.font = '11px Arial';
-  ctx.fillText('Presentá esta credencial el día del evento', WIDTH / 2, 490);
+  ctx.font = '10px Arial';
+  ctx.fillText('Presentá esta credencial el día del evento', W / 2, 530);
 
   return canvas.toBuffer('image/png');
 }

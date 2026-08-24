@@ -61,10 +61,26 @@ async function listarPagosEvento(req, res, next) {
   }
 }
 
+async function listarEventosActivos(req, res, next) {
+  try {
+    const eventos = await pagosService.listarEventosActivos(req.orgId);
+    res.status(200).json({ eventos });
+  } catch (error) { next(error); }
+}
+
+async function listarHistorial(req, res, next) {
+  try {
+    const eventos = await pagosService.listarHistorial(req.orgId);
+    res.status(200).json({ eventos });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   webhookGaliopay,
   reenviarMailPago,
   pagarTramoAdelantado,
   listarTramos,
-  listarPagosEvento
+  listarPagosEvento,
+  listarEventosActivos,
+  listarHistorial
 };

@@ -63,11 +63,12 @@ async function escanearQr(qrPersonal, eventoId) {
 
   // Si es responsable de un grupo, traemos los integrantes para acreditación grupal
   let grupo = null;
+  // Si es responsable → ya tenés el bloque existente, agregá solicitudesPendientes
   if (participante.rol_grupo === 'responsable' && participante.grupo_id) {
     const grupoData = await gruposRepository.buscarPorId(participante.grupo_id);
     const integrantes = await gruposRepository.listarIntegrantes(participante.grupo_id);
+    const solicitudes = await gruposRepository.listarSolicitudes(participante.grupo_id);
 
-    // Para cada integrante, verificamos si ya está acreditado
     const integrantesConEstado = await Promise.all(
       integrantes.map(async (i) => {
         const checkin = await acreditacionRepository.buscarCheckinPorParticipante(i.id);
@@ -88,9 +89,27 @@ async function escanearQr(qrPersonal, eventoId) {
     grupo = {
       id: grupoData.id,
       nombre: grupoData.nombre,
+      solicitudesPendientes: solicitudes.length, // ← nuevo
       integrantes: integrantesConEstado,
     };
   }
+
+  // Si es integrante → traer datos básicos del grupo
+  if (['integrante', 'autoinscripto'].includes(participante.rol_grupo) && participante.grupo_id) {
+    const grupoData = await gruposRepository.buscarPorId(participante.grupo_id);
+    grupo = {
+      id: grupoData.id,
+      nombre: grupoData.nombre,
+      parroquia: grupoData.parroquia,
+      localidad: grupoData.localidad,
+    };
+  }
+
+  const evento = await eventosRepository.buscarPorId(eventoId);
+  const esMenor = !participante.es_mayor;
+  const requiereAutorizacion = Boolean(evento?.requiere_autorizacion_menores) && esMenor;
+  const requiereCertificado = Boolean(evento?.config_certificado && evento.config_certificado !== 'no');
+  const ficha = await db('ficha_medica').where({ participante_id: participante.id }).first();
 
   return {
     participante: {
@@ -102,6 +121,13 @@ async function escanearQr(qrPersonal, eventoId) {
       estado_pago: participante.estado_pago,
       rol_grupo: participante.rol_grupo,
       acreditado: !!yaAcreditado,
+      tiene_ficha_medica: !!ficha,
+      tiene_autorizacion: !!participante.autorizacion_url,
+      tiene_certificado: !!participante.certificado_url,
+      autorizacion_url: participante.autorizacion_url,
+      certificado_url: participante.certificado_url,
+      autorizacion_pendiente: !participante.autorizacion_url && requiereAutorizacion,
+      certificado_pendiente: !participante.certificado_url && requiereCertificado,
     },
     grupo, // null si no es referente
   };

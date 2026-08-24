@@ -10,6 +10,7 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 const QRCode = require('qrcode');
 const { sanitizarParticipante } = require('../../participantes/services/participantes.service');
 const { hashDni } = require('../../../utils/encryption');
+const { desencriptar } = require('../../../utils/encryption');
 
 /**
  * Genera el código de invitación — 8 caracteres alfanuméricos en mayúsculas,
@@ -107,17 +108,19 @@ async function crearGrupo(orgId, datos) {
 
     // Generar QR de invitación del grupo como imagen adjunta
     const qrBuffer = await QRCode.toBuffer(grupo.qr_inv, {
-      width: 300,
+      width: 600, // ← mayor resolución
       margin: 2,
       color: { dark: '#1E3A5F', light: '#FFFFFF' },
     });
 
     // Generar credencial del responsable
+    const dniLegible = desencriptar(responsable.dni);
     const credencialBuffer = await generarCredencial({
       qrPersonal: responsable.qr_personal,
       nombreEvento: evento.nombre,
       nombreParticipante: `${responsable.nombre} ${responsable.apellido}`,
-      dni: responsable.dni,
+      dni: dniLegible,
+      esReferente: true,
     });
 
     const { subject, html } = templateInfoGrupoResponsable({
@@ -137,7 +140,7 @@ async function crearGrupo(orgId, datos) {
           contentType: 'image/png',
         },
         {
-          filename: `credencial_responsable.png`,
+          filename: `credencial_${dniLegible}.png`,
           content: credencialBuffer,
           contentType: 'image/png',
         },
@@ -235,7 +238,7 @@ async function resolverCodigoInvitacion(codigoInv) {
 
   // Verificar que el grupo no esté lleno
   const integrantes = await gruposRepository.contarIntegrantes(grupo.id);
-  if (integrantes >= grupo.max_integrantes) {
+  if (grupo.max_integrantes !== null && integrantes >= grupo.max_integrantes) {
     const error = new Error('Este grupo ya alcanzó su capacidad máxima');
     error.status = 409;
     throw error;

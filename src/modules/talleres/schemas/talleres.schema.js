@@ -15,15 +15,26 @@ const tallerSchema = z
     path: ['fin'],
   });
 
+// Taller dentro de un bloque — sin inicio/fin propios
+const tallerEnBloqueSchema = z.object({
+  nombre: z.string().min(1).max(150),
+  descripcion: z.string().max(2000).optional(),
+  capacidad: z.number().int().positive().optional(),
+  lugarId: z.string().uuid().optional(),
+});
+
 // Schema de un bloque, con su array de talleres adentro.
 // Se usa tanto embebido en POST /eventos (creación conjunta) como en
 // el endpoint standalone POST /eventos/:eventoId/bloques-taller.
+// Bloque con talleres adentro — los talleres no tienen inicio/fin
 const bloqueTallerSchema = z.object({
-  nombre: z.string().min(1, 'El nombre del bloque es obligatorio').max(150),
+  nombre: z.string().min(1).max(150),
   cantidadElegible: z.number().int().positive(),
   esObligatorio: z.boolean().default(false),
   orden: z.number().int().nonnegative(),
-  talleres: z.array(tallerSchema).min(1, 'El bloque necesita al menos un taller'),
+  inicio: z.string().datetime({ message: 'inicio debe ser una fecha ISO válida' }).optional(),
+  fin: z.string().datetime({ message: 'fin debe ser una fecha ISO válida' }).optional(),
+  talleres: z.array(tallerEnBloqueSchema).min(1),
 });
 
 const crearBloqueTallerSchema = z.object({
@@ -54,20 +65,6 @@ const crearTallerEnBloqueSchema = z.object({
   body: tallerSchema,
 });
 
-const editarTallerSchema = z.object({
-  params: z.object({
-    id: z.string().uuid('Id de taller inválido'),
-  }),
-  body: z.object({
-    nombre: z.string().min(1).max(150).optional(),
-    descripcion: z.string().max(2000).optional(),
-    inicio: z.string().datetime().optional(),
-    fin: z.string().datetime().optional(),
-    capacidad: z.number().int().positive().nullable().optional(),
-    lugarId: z.string().uuid().nullable().optional(),
-  }),
-});
-
 const idParamSchema = z.object({
   params: z.object({
     id: z.string().uuid('Id inválido'),
@@ -90,6 +87,44 @@ const desasignarParticipanteSchema = z.object({
   }),
 });
 
+// Taller suelto — con inicio/fin propios obligatorios
+const tallerSueltoSchema = z.object({
+  nombre: z.string().min(1).max(150),
+  descripcion: z.string().max(2000).optional(),
+  capacidad: z.number().int().positive().optional(),
+  lugarId: z.string().uuid().optional(),
+  esObligatorio: z.boolean().default(false),
+  inicio: z.string().datetime({ message: 'inicio debe ser una fecha ISO válida' }),
+  fin: z.string().datetime({ message: 'fin debe ser una fecha ISO válida' }),
+}).refine((data) => new Date(data.fin) > new Date(data.inicio), {
+  message: 'fin debe ser posterior a inicio',
+  path: ['fin'],
+});
+
+// Schema para crear taller suelto
+const crearTallerSueltoSchema = z.object({
+  params: z.object({
+    eventoId: z.string().uuid(),
+  }),
+  body: tallerSueltoSchema,
+});
+
+// Editar taller — todos opcionales
+const editarTallerSchema = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+  body: z.object({
+    nombre: z.string().min(1).max(150).optional(),
+    descripcion: z.string().max(2000).optional(),
+    esObligatorio: z.boolean().optional(),
+    inicio: z.string().datetime().optional(),
+    fin: z.string().datetime().optional(),
+    capacidad: z.number().int().positive().nullable().optional(),
+    lugarId: z.string().uuid().nullable().optional(),
+  }),
+});
+
 module.exports = {
   tallerSchema,
   bloqueTallerSchema,
@@ -100,4 +135,6 @@ module.exports = {
   idParamSchema,
   asignarParticipanteSchema,
   desasignarParticipanteSchema,
+  crearTallerSueltoSchema,
+  tallerSueltoSchema
 };

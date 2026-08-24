@@ -1,9 +1,13 @@
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../../../config/db');
+const s3Client = require('../../../config/s3');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
+const { construirUrlPublica } = require('../../../utils/storage');
 const participantesRepository = require('../repositories/participantes.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
+const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
 const { enviarMail } = require('../../../utils/mail');
 const {
@@ -13,12 +17,12 @@ const {
   templateVinculoRechazado,
 } = require('../../../utils/mailTemplates');
 const { generarCredencial } = require('../../../utils/generarCredencial');
-const gruposRepository = require('../../grupos/repositories/grupos.repository');
 
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -50,6 +54,10 @@ async function buscarEventoCacheado(id) {
  * - referente/público: campos reducidos, sin DNI
  */
 function sanitizarParticipante(participante, contexto = 'admin') {
+  const tieneFicha = Boolean(participante.tiene_ficha_medica);
+  const tieneAuto = Boolean(participante.tiene_autorizacion || participante.autorizacion_url);
+  const tieneCert = Boolean(participante.tiene_certificado || participante.certificado_url);
+
   if (contexto === 'admin') {
     let dniLegible = participante.dni;
     try { dniLegible = desencriptar(participante.dni); } catch { }
@@ -57,7 +65,10 @@ function sanitizarParticipante(participante, contexto = 'admin') {
       ...participante,
       dni: dniLegible,
       dni_hash: undefined,
-      edad: calcularEdad(participante.nacimiento), // ← agregar
+      edad: calcularEdad(participante.nacimiento),
+      tiene_ficha_medica: tieneFicha,
+      tiene_autorizacion: tieneAuto,
+      tiene_certificado: tieneCert,
     };
   }
 
@@ -66,11 +77,16 @@ function sanitizarParticipante(participante, contexto = 'admin') {
     nombre: participante.nombre,
     apellido: participante.apellido,
     nacimiento: participante.nacimiento,
-    edad: calcularEdad(participante.nacimiento), // ← reemplaza es_mayor
+    edad: calcularEdad(participante.nacimiento),
     estado_pago: participante.estado_pago,
     estado_vinculo: participante.estado_vinculo,
     rol_grupo: participante.rol_grupo,
     grupo_id: participante.grupo_id,
+    tiene_ficha_medica: tieneFicha,
+    tiene_autorizacion: tieneAuto,
+    tiene_certificado: tieneCert,
+    autorizacion_url: participante.autorizacion_url,
+    certificado_url: participante.certificado_url,
   };
 }
 
@@ -134,6 +150,15 @@ function validarRespuestasForm(campos, respuestas = {}) {
   }
 }
 
+// Verificar si ficha médica es requerida
+function fichaMedicaRequerida(configFichaMedica, esMenor) {
+  if (configFichaMedica === 'no') return false;
+  if (configFichaMedica === 'obligatorio_todos') return true;
+  if (configFichaMedica === 'obligatorio_menores' && esMenor) return true;
+  if (configFichaMedica === 'obligatorio_mayores' && !esMenor) return true;
+  return false;
+}
+
 /**
  * Crea un participante nuevo en un evento.
  *
@@ -171,6 +196,12 @@ async function crearParticipante(orgId, datos) {
         error.status = 409;
         throw error;
       }
+    }
+
+    const esMenor = calcularEdad(datos.nacimiento) < 18;
+    if (fichaMedicaRequerida(evento.config_ficha_medica, esMenor) && !datos.fichaMedica) {
+      const error = new Error('La ficha médica es obligatoria para inscribirse en este evento');
+      error.status = 400; throw error;
     }
 
     // Si no viene orgId (inscripción pública sin X-Org-Id), lo tomamos del evento
@@ -246,6 +277,34 @@ async function crearParticipante(orgId, datos) {
       trx
     );
 
+    if (datos.fichaMedica) {
+      console.log('[ficha] creando ficha para participante:', participante.id);
+      try {
+        await fichaMedicaRepository.crear({
+          org_id: orgIdFinal,
+          evento_id: datos.eventoId,
+          participante_id: participante.id,
+          obra_social: datos.fichaMedica.obra_social ?? null,
+          tipo_sangre: datos.fichaMedica.tipo_sangre || null,
+          tiene_diabetes: datos.fichaMedica.tiene_diabetes ?? false,
+          tiene_asma: datos.fichaMedica.tiene_asma ?? false,
+          tiene_epilepsia: datos.fichaMedica.tiene_epilepsia ?? false,
+          tiene_cardiopatia: datos.fichaMedica.tiene_cardiopatia ?? false,
+          otras_condiciones: datos.fichaMedica.otras_condiciones ?? null,
+          alergias: datos.fichaMedica.alergias ?? null,
+          restricciones_alimentarias: datos.fichaMedica.restricciones_alimentarias ?? null,
+          medicacion: datos.fichaMedica.medicacion ? JSON.stringify(datos.fichaMedica.medicacion) : null,
+          tiene_discapacidad: datos.fichaMedica.tiene_discapacidad ?? false,
+          adaptaciones: datos.fichaMedica.adaptaciones ? JSON.stringify(datos.fichaMedica.adaptaciones) : null,
+          recomendaciones: datos.fichaMedica.recomendaciones ?? null,
+        }, trx);
+        console.log('[ficha] creada OK');
+      } catch (err) {
+        console.error('[ficha] error al crear:', err.message);
+        throw err;
+      }
+    }
+
     // 9. Inscribir a los talleres elegidos (si vinieron)
     if (datos.tallerIds && datos.tallerIds.length > 0) {
       for (const tallerId of datos.tallerIds) {
@@ -272,19 +331,20 @@ async function crearParticipante(orgId, datos) {
           }
         }
 
-        // Verificar cantidad_elegible del bloque
-        const bloque = await talleresRepository.buscarBloquePorId(taller.bloque_taller_id, trx);
-        const yaElegidos = await talleresRepository.contarInscripcionesDelParticipanteEnBloque(
-          participante.id,
-          bloque.id,
-          trx
-        );
-        if (yaElegidos >= bloque.cantidad_elegible) {
-          const error = new Error(
-            `Ya elegiste el máximo de talleres permitidos para el bloque "${bloque.nombre}" (${bloque.cantidad_elegible})`
+        // Verificar cantidad_elegible del bloque (solo si el taller tiene bloque)
+        if (taller.bloque_taller_id) {
+          const bloque = await talleresRepository.buscarBloquePorId(taller.bloque_taller_id, trx);
+          const yaElegidos = await talleresRepository.contarInscripcionesDelParticipanteEnBloque(
+            participante.id,
+            bloque.id,
+            trx
           );
-          error.status = 409;
-          throw error;
+          if (yaElegidos >= bloque.cantidad_elegible) {
+            const error = new Error(
+              `Ya elegiste el máximo de talleres permitidos para el bloque "${bloque.nombre}" (${bloque.cantidad_elegible})`
+            );
+            error.status = 409; throw error;
+          }
         }
 
         await talleresRepository.asignarParticipante(
@@ -306,22 +366,39 @@ async function crearParticipante(orgId, datos) {
     // fire and forget — después de que la transacción commitea
     setTimeout(async () => {
       try {
-        // Releer el participante para ver el estado_alta_plataforma real
+        if (datos.rolGrupo === 'responsable') return;
+
         const participanteActualizado = await participantesRepository.buscarPorId(participante.id);
 
-        if (participanteActualizado.estado_alta_plataforma === 'confirmado') {
+        if (participanteActualizado.estado_alta_plataforma !== 'confirmado') {
+          enviarMail({
+            to: datosParaMail.email,
+            subject: `📋 Inscripción recibida — ${evento.nombre}`,
+            html: `<p>Hola ${datosParaMail.nombre}, tu inscripción fue recibida pero está pendiente de confirmación.</p>
+               <p>Una vez que el organizador regularice el pago de la plataforma, recibirás tu credencial con QR.</p>`,
+          });
+          return;
+        }
+
+        if (evento.costo == 0 || evento.costo === null) {
           const credencialBuffer = await generarCredencial({
             qrPersonal: datosParaMail.qrPersonal,
             nombreEvento: evento.nombre,
             nombreParticipante: `${datosParaMail.nombre} ${datosParaMail.apellido}`,
             dni: datosParaMail.dni,
+            esReferente: participante.rol_grupo === 'responsable'
           });
+          // Buscar el grupo si el participante pertenece a uno
+          let grupo = null;
+          if (participanteActualizado.grupo_id) {
+            grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
+          }
 
           const { subject, html } = templateConfirmacionInscripcion({
             participante: { ...participanteActualizado, dni: datosParaMail.dni },
             evento,
+            grupo,
           });
-
           enviarMail({
             to: datosParaMail.email,
             subject,
@@ -331,15 +408,6 @@ async function crearParticipante(orgId, datos) {
               content: credencialBuffer,
               contentType: 'image/png',
             }],
-          });
-        } else {
-          enviarMail({
-            to: datosParaMail.email,
-            subject: `📋 Inscripción recibida — ${evento.nombre}`,
-            html: `
-          <p>Hola ${datosParaMail.nombre}, tu inscripción fue recibida pero está pendiente de confirmación.</p>
-          <p>Una vez que el organizador regularice el pago de la plataforma, recibirás tu credencial con QR.</p>
-        `,
           });
         }
       } catch (err) {
@@ -357,7 +425,10 @@ async function crearParticipante(orgId, datos) {
     invalidarPorPrefijo(`participantes:evento:${datos.eventoId}`);
     invalidarPorPrefijo(`evento:${datos.eventoId}`);
 
-    return sanitizarParticipante(participante, 'admin');
+    return sanitizarParticipante({
+      ...participante,
+      tiene_ficha_medica: !!datos.fichaMedica,
+    }, 'admin');
   });
 }
 
@@ -531,11 +602,18 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
     nombreEvento: evento.nombre,
     nombreParticipante: `${participante.nombre} ${participante.apellido}`,
     dni: dniLegible,
+    esReferente: participante.rol_grupo === 'responsable'
   });
 
+  let grupo = null;
+  if (participanteActualizado.grupo_id) {
+    grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
+  }
+
   const { subject, html } = templateConfirmacionInscripcion({
-    participante: { ...participante, dni: dniLegible },
+    participante: { ...participanteActualizado, dni: datosParaMail.dni },
     evento,
+    grupo,
   });
 
   // Si viene emailOverride, lo usamos; sino el del participante
@@ -581,6 +659,149 @@ function calcularEdad(nacimiento) {
   return edad;
 }
 
+async function subirAutorizacion(id, orgId, file) {
+  let participante;
+  if (orgId) {
+    participante = await obtenerParticipante(id, orgId);
+  } else {
+    participante = await participantesRepository.buscarPorId(id);
+    if (!participante) {
+      const error = new Error('Participante no encontrado');
+      error.status = 404; throw error;
+    }
+  }
+
+  const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+  if (!tiposPermitidos.includes(file.mimetype)) {
+    const error = new Error('Solo se aceptan PDF o imágenes (JPG, PNG, WebP)');
+    error.status = 400; throw error;
+  }
+
+  const ext = file.mimetype === 'application/pdf' ? 'pdf' : 'jpg';
+  const key = `autorizaciones/${participante.evento_id}/${id}.${ext}`;
+
+  await s3Client.send(new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  }));
+
+  const url = construirUrlPublica(key);
+  await participantesRepository.actualizar(id, { autorizacion_url: url });
+  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+
+  return { autorizacion_url: url };
+}
+
+async function subirCertificado(id, orgId, file) {
+  let participante;
+  if (orgId) {
+    participante = await obtenerParticipante(id, orgId);
+  } else {
+    participante = await participantesRepository.buscarPorId(id);
+    if (!participante) {
+      const error = new Error('Participante no encontrado');
+      error.status = 404; throw error;
+    }
+  }
+
+  const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+  if (!tiposPermitidos.includes(file.mimetype)) {
+    const error = new Error('Solo se aceptan PDF o imágenes (JPG, PNG, WebP)');
+    error.status = 400; throw error;
+  }
+
+  const ext = file.mimetype === 'application/pdf' ? 'pdf' : 'jpg';
+  const key = `certificados/${participante.evento_id}/${id}.${ext}`;
+
+  await s3Client.send(new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  }));
+
+  const url = construirUrlPublica(key);
+  await participantesRepository.actualizar(id, { certificado_url: url });
+  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+
+  return { certificado_url: url };
+}
+
+async function verificarDniEnEvento(dni, eventoId) {
+  const participante = await participantesRepository.buscarPorDniYEvento(dni, eventoId);
+  if (!participante) {
+    return { existe: false };
+  }
+  return {
+    existe: true,
+    participanteId: participante.id,
+    nombre: participante.nombre,
+    apellido: participante.apellido,
+    estadoPago: participante.estado_pago,
+  };
+}
+
+async function actualizarEstadoPago(id, orgId, estadoPago) {
+  // Verificar permisos con obtenerParticipante
+  await obtenerParticipante(id, orgId);
+
+  // Traer participante crudo para el mail (con dni encriptado y qr_personal)
+  const participante = await participantesRepository.buscarPorId(id);
+  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+
+  await participantesRepository.actualizar(id, { estado_pago: estadoPago });
+  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+  invalidar(`stats:evento:${participante.evento_id}`);
+
+  if (estadoPago === 'aprobado') {
+    try {
+      const dniLegible = desencriptar(participante.dni);
+      const credencialBuffer = await generarCredencial({
+        qrPersonal: participante.qr_personal,
+        nombreEvento: evento.nombre,
+        nombreParticipante: `${participante.nombre} ${participante.apellido}`,
+        dni: dniLegible,
+        esReferente: participante.rol_grupo === 'responsable'
+      });
+      let grupo = null;
+      if (participanteActualizado.grupo_id) {
+        grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
+      }
+
+      const { subject, html } = templateConfirmacionInscripcion({
+        participante: { ...participanteActualizado, dni: datosParaMail.dni },
+        evento,
+        grupo,
+      });
+      enviarMail({
+        to: participante.email,
+        subject,
+        html,
+        attachments: [{
+          filename: `credencial_${dniLegible}.png`,
+          content: credencialBuffer,
+          contentType: 'image/png',
+        }],
+      });
+    } catch (err) {
+      console.error('[mail] Error al enviar mail de aprobación:', err.message);
+    }
+  }
+
+  if (estadoPago === 'rechazado') {
+    try {
+      const { subject, html } = templatePagoRechazado({ participante, evento });
+      enviarMail({ to: participante.email, subject, html });
+    } catch (err) {
+      console.error('[mail] Error al enviar mail de rechazo:', err.message);
+    }
+  }
+
+  return { ok: true, estadoPago };
+}
+
 module.exports = {
   crearParticipante,
   listarParticipantes,
@@ -594,4 +815,8 @@ module.exports = {
   reenviarMailInscripcion,
   listarEliminados,
   calcularEdad,
+  subirAutorizacion,
+  subirCertificado,
+  verificarDniEnEvento,
+  actualizarEstadoPago
 };

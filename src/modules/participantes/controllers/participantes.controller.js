@@ -170,6 +170,46 @@ async function listarEliminados(req, res, next) {
   }
 }
 
+async function subirAutorizacion(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ error: { message: 'No se recibió ningún archivo' } });
+    const resultado = await participantesService.subirAutorizacion(req.params.id, req.orgId ?? null, req.file);
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
+async function subirCertificado(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ error: { message: 'No se recibió ningún archivo' } });
+    const resultado = await participantesService.subirCertificado(req.params.id, req.orgId ?? null, req.file);
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
+async function verificarDni(req, res, next) {
+  try {
+    const { dni, eventoId } = req.query;
+    if (!dni || !eventoId) {
+      return res.status(400).json({ error: { message: 'Falta dni o eventoId' } });
+    }
+    const resultado = await participantesService.verificarDniEnEvento(dni, eventoId);
+    res.status(200).json(resultado);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function actualizarEstadoPago(req, res, next) {
+  try {
+    const resultado = await participantesService.actualizarEstadoPago(
+      req.params.id,
+      req.orgId,
+      req.body.estadoPago
+    );
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   crear,
   listar,
@@ -180,5 +220,9 @@ module.exports = {
   obtenerUltimaUbicacion,
   obtenerComprobante,
   reenviarMail,
-  listarEliminados
+  listarEliminados,
+  subirAutorizacion,
+  subirCertificado,
+  verificarDni,
+  actualizarEstadoPago
 };

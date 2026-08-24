@@ -142,6 +142,17 @@ async function descargarExcelTaller(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function crearTallerSuelto(req, res, next) {
+  try {
+    const taller = await talleresService.crearTallerSuelto(
+      req.params.eventoId,
+      req.orgId,
+      req.body
+    );
+    res.status(201).json({ taller });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   crearBloque,
   listarBloques,
@@ -156,5 +167,6 @@ module.exports = {
   asignarParticipante,
   desasignarParticipante,
   contarInscriptos,
-  descargarExcelTaller
+  descargarExcelTaller,
+  crearTallerSuelto
 };

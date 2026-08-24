@@ -41,4 +41,7 @@ router.get(
   pagosController.listarPagosEvento
 );
 
+router.get('/eventos-activos', autenticar, resolverOrganizacionActiva, pagosController.listarEventosActivos);
+router.get('/historial', autenticar, resolverOrganizacionActiva, pagosController.listarHistorial);
+
 module.exports = router;

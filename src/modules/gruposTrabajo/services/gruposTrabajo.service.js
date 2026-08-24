@@ -21,6 +21,7 @@ const PRESETS = {
 const ESTADO_PAGO_LABELS = {
   no_aplica: 'Sin costo',
   pendiente: 'Pendiente',
+  pendiente_aprobacion: 'Comprobante enviado',
   aprobado: 'Aprobado',
   rechazado: 'Rechazado',
 };

@@ -75,6 +75,102 @@ async function listarPagosPorEvento(eventoId) {
     .orderBy('creado_en', 'desc');
 }
 
+async function listarEventosActivosConPago(orgId) {
+  const ahora = new Date();
+
+  const eventos = await db('evento')
+    .where({ org_id: orgId })
+    .where('fecha_fin', '>=', ahora)
+    .orderBy('fecha_inicio', 'asc')
+    .select('id', 'nombre', 'fecha_inicio', 'fecha_fin', 'participantes_facturados');
+
+  if (!eventos.length) return [];
+
+  // Contar inscriptos por evento
+  const conteos = await db('participante')
+    .whereIn('evento_id', eventos.map(e => e.id))
+    .where('activo', true)
+    .groupBy('evento_id')
+    .select('evento_id')
+    .count('id as total');
+
+  const conteoMap = {};
+  for (const c of conteos) conteoMap[c.evento_id] = Number(c.total);
+
+  // Último pago por evento
+  const pagos = await db('pago')
+    .whereIn('evento_id', eventos.map(e => e.id))
+    .where('tipo', 'creacion_evento')
+    .whereNotIn('estado', ['cancelado'])
+    .orderBy('creado_en', 'desc')
+    .select('evento_id', 'estado', 'monto', 'creado_en');
+
+  const pagoMap = {};
+  for (const p of pagos) {
+    if (!pagoMap[p.evento_id]) pagoMap[p.evento_id] = p;
+  }
+
+  return eventos.map(e => ({
+    id: e.id,
+    nombre: e.nombre,
+    fecha_inicio: e.fecha_inicio,
+    fecha_fin: e.fecha_fin,
+    participantes_inscriptos: conteoMap[e.id] ?? 0,
+    participantes_facturados: e.participantes_facturados ?? 0,
+    estado_pago: pagoMap[e.id]?.estado ?? 'sin_cargo',
+    monto_ultimo_pago: pagoMap[e.id]?.monto ?? null,
+  }));
+}
+
+async function listarHistorialPagos(orgId) {
+  const ahora = new Date();
+
+  const eventos = await db('evento')
+    .where({ org_id: orgId })
+    .where('fecha_fin', '<', ahora)
+    .orderBy('fecha_fin', 'desc')
+    .select('id', 'nombre', 'fecha_fin', 'participantes_facturados');
+
+  if (!eventos.length) return [];
+
+  const pagos = await db('pago')
+    .whereIn('evento_id', eventos.map(e => e.id))
+    .where('tipo', 'creacion_evento')
+    .whereNotIn('estado', ['cancelado'])
+    .orderBy('creado_en', 'desc')
+    .select('evento_id', 'estado', 'monto');
+
+  const pagoMap = {};
+  for (const p of pagos) {
+    if (!pagoMap[p.evento_id]) pagoMap[p.evento_id] = p;
+  }
+
+  // Traer tramos para los montos totales
+  const tramos = await db('tramo_precio_plataforma')
+    .where('activo', true)
+    .orderBy('participantes_desde', 'desc');
+
+  const buscarTramo = (cantidad) =>
+    tramos.find(t => t.participantes_desde <= cantidad) ?? null;
+
+  return eventos.map(e => {
+    const pago = pagoMap[e.id];
+    const tramo = buscarTramo(e.participantes_facturados ?? 0);
+    return {
+      id: e.id,
+      nombre: e.nombre,
+      fecha_fin: e.fecha_fin,
+      participantes_facturados: e.participantes_facturados ?? 0,
+      tramo_alcanzado: tramo ? {
+        participantes_desde: tramo.participantes_desde,
+        precio_por_participante: tramo.precio_por_participante,
+      } : null,
+      monto_total: pago?.monto ?? null,
+      estado_final: pago?.estado ?? 'sin_cargo',
+    };
+  });
+}
+
 module.exports = {
   buscarTramoActual,
   crearPago,
@@ -83,5 +179,7 @@ module.exports = {
   actualizarRefPasarela,
   cancelarPagosPendientes,
   listarTramos,
-  listarPagosPorEvento
+  listarPagosPorEvento,
+  listarEventosActivosConPago,
+  listarHistorialPagos
 };

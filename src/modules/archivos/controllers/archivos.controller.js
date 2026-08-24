@@ -1,4 +1,5 @@
 const archivosService = require('../services/archivos.service');
+const participantesRepository = require('../../participantes/repositories/participantes.repository');
 
 /**
  * POST /api/v1/archivos
@@ -35,6 +36,13 @@ async function subir(req, res, next) {
       }
     );
 
+    if (resultado.participante_id && contexto === 'comprobante_pago') {
+      await participantesRepository.actualizar(
+        resultado.participante_id,
+        { estado_pago: 'pendiente_aprobacion' }
+      );
+    }
+
     res.status(201).json({ archivo: resultado });
   } catch (error) {
     next(error);
@@ -59,4 +67,16 @@ async function eliminar(req, res, next) {
   }
 }
 
-module.exports = { subir, obtener, eliminar };
+async function subirAutorizacionTemplate(req, res, next) {
+  try {
+    console.log('[autorizacion-template] body:', req.body);
+    console.log('[autorizacion-template] file:', req.file?.originalname);
+    if (!req.file) {
+      return res.status(400).json({ error: { message: 'No se recibió ningún archivo' } });
+    }
+    const url = await archivosService.subirAutorizacionTemplate(req.file, req.body.eventoId, req.usuario.sub);
+    res.status(200).json({ url });
+  } catch (error) { next(error); }
+}
+
+module.exports = { subir, obtener, eliminar, subirAutorizacionTemplate };

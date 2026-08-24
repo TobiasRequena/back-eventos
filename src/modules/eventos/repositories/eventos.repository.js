@@ -47,6 +47,10 @@ async function crear(datos, trx = db) {
       cbu_cvu: datos.cbuCvu ?? null,
       alias_cobro: datos.aliasCobro ?? null,
       costo: datos.costo,
+      config_ficha_medica: datos.configFichaMedica ?? 'no',
+      config_certificado: datos.configCertificado ?? 'no',
+      requiere_autorizacion_menores: datos.requiereAutorizacionMenores ?? false,
+      autorizacion_template_url: datos.autorizacionTemplateUrl ?? null,
     })
     .returning('*');
 
@@ -124,12 +128,16 @@ async function listarInscriptosCompleto(eventoId) {
   const participantes = await db('participante')
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', true)
     .select(
       'participante.*',
       'grupo.nombre as grupo_nombre',
-      db.raw('(checkin.id IS NOT NULL) as acreditado')
+      db.raw('(checkin.id IS NOT NULL) as acreditado'),
+      db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado'),
     )
     .orderBy('participante.apellido', 'asc');
 
@@ -177,6 +185,115 @@ async function contarInscripcionesPorDia(orgId, fechaInicio, fechaFin) {
     .orderBy('fecha', 'asc');
 }
 
+async function resumenPagos(eventoId) {
+  const filas = await db('participante')
+    .where({ evento_id: eventoId, activo: true })
+    .groupBy('estado_pago')
+    .select('estado_pago')
+    .count('id as cantidad');
+
+  const resumen = {
+    no_aplica: 0,
+    pendiente: 0,
+    pendiente_aprobacion: 0,
+    aprobado: 0,
+    rechazado: 0,
+  };
+
+  for (const fila of filas) {
+    if (resumen[fila.estado_pago] !== undefined) {
+      resumen[fila.estado_pago] = Number(fila.cantidad);
+    }
+  }
+
+  return resumen;
+}
+
+async function kpisFichaMedica(eventoId) {
+  const filas = await db('ficha_medica')
+    .join('participante', 'participante.id', 'ficha_medica.participante_id')
+    .where('ficha_medica.evento_id', eventoId)
+    .where('participante.activo', true)
+    .select(
+      db.raw('COUNT(*) as total'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.tiene_diabetes = true) as con_diabetes'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.tiene_asma = true) as con_asma'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.tiene_epilepsia = true) as con_epilepsia'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.tiene_cardiopatia = true) as con_cardiopatia'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.otras_condiciones IS NOT NULL) as con_otras_condiciones'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.alergias IS NOT NULL) as con_alergias'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.restricciones_alimentarias IS NOT NULL) as con_restricciones_alimentarias'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.tiene_discapacidad = true) as con_discapacidad'),
+      db.raw('COUNT(*) FILTER (WHERE ficha_medica.recomendaciones IS NOT NULL) as con_recomendaciones'),
+      db.raw(`COUNT(*) FILTER (WHERE ficha_medica.medicacion IS NOT NULL AND participante.es_mayor = false) as con_medicacion_menores`),
+    )
+    .first();
+
+  return {
+    total: Number(filas.total),
+    conDiabetes: Number(filas.con_diabetes),
+    conAsma: Number(filas.con_asma),
+    conEpilepsia: Number(filas.con_epilepsia),
+    conCardiopatia: Number(filas.con_cardiopatia),
+    conOtrasCondiciones: Number(filas.con_otras_condiciones),
+    conAlergias: Number(filas.con_alergias),
+    conRestriccionesAlimentarias: Number(filas.con_restricciones_alimentarias),
+    conDiscapacidad: Number(filas.con_discapacidad),
+    conRecomendaciones: Number(filas.con_recomendaciones),
+    conMedicacionMenores: Number(filas.con_medicacion_menores),
+  };
+}
+
+async function listarFichasMedicasRelevantes(eventoId) {
+  return db('ficha_medica')
+    .join('participante', 'participante.id', 'ficha_medica.participante_id')
+    .where('ficha_medica.evento_id', eventoId)
+    .where('participante.activo', true)
+    .where(function () {
+      this.where('ficha_medica.tiene_diabetes', true)
+        .orWhere('ficha_medica.tiene_asma', true)
+        .orWhere('ficha_medica.tiene_epilepsia', true)
+        .orWhere('ficha_medica.tiene_cardiopatia', true)
+        .orWhereNotNull('ficha_medica.otras_condiciones')
+        .orWhereNotNull('ficha_medica.alergias')
+        .orWhereNotNull('ficha_medica.restricciones_alimentarias')
+        .orWhere('ficha_medica.tiene_discapacidad', true)
+        .orWhereNotNull('ficha_medica.recomendaciones')
+        .orWhere(function () {
+          this.whereNotNull('ficha_medica.medicacion')
+            .andWhere('participante.es_mayor', false);
+        });
+    })
+    .select(
+      'participante.id as participante_id',
+      'participante.nombre',
+      'participante.apellido',
+      'participante.nacimiento',
+      'participante.es_mayor',
+      'ficha_medica.tiene_diabetes',
+      'ficha_medica.tiene_asma',
+      'ficha_medica.tiene_epilepsia',
+      'ficha_medica.tiene_cardiopatia',
+      'ficha_medica.otras_condiciones',
+      'ficha_medica.alergias',
+      'ficha_medica.restricciones_alimentarias',
+      'ficha_medica.tiene_discapacidad',
+      'ficha_medica.adaptaciones',
+      'ficha_medica.recomendaciones',
+      db.raw(`CASE WHEN participante.es_mayor = false THEN ficha_medica.medicacion ELSE NULL END as medicacion`),
+    )
+    .orderBy('participante.apellido', 'asc');
+}
+
+async function contarAcreditados(eventoId) {
+  const [{ count }] = await db('checkin')
+    .join('participante', 'participante.id', 'checkin.participante_id')
+    .where('participante.evento_id', eventoId)
+    .where('participante.activo', true)
+    .count('checkin.id as count');
+  return Number(count);
+}
+
 module.exports = {
   contarPorOrganizacion,
   buscarActivoPorCodigo,
@@ -190,4 +307,8 @@ module.exports = {
   listarRespuestasForm,
   listarInscriptosCompleto,
   contarInscripcionesPorDia,
+  resumenPagos,
+  kpisFichaMedica,
+  listarFichasMedicasRelevantes,
+  contarAcreditados,
 };

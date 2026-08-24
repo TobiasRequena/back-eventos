@@ -12,6 +12,7 @@ const {
   idParamSchema,
   asignarParticipanteSchema,
   desasignarParticipanteSchema,
+  crearTallerSueltoSchema
 } = require('../schemas/talleres.schema');
 
 // Router anidado en /eventos/:eventoId/bloques-taller — crear y listar bloques de un evento.
@@ -70,9 +71,20 @@ routerTalleresPlano.get(
   talleresController.descargarExcelTaller
 );
 
+// Router anidado en /eventos/:eventoId/talleres — crear taller suelto
+const routerTalleresAnidado = express.Router({ mergeParams: true });
+routerTalleresAnidado.use(autenticar);
+routerTalleresAnidado.use(resolverOrganizacionActiva);
+routerTalleresAnidado.post(
+  '/:eventoId/talleres',
+  validate(crearTallerSueltoSchema),
+  talleresController.crearTallerSuelto
+);
+
 module.exports = {
   routerBloquesAnidado,
   routerTalleresEnBloque,
   routerBloquesPlano,
   routerTalleresPlano,
+  routerTalleresAnidado
 };

@@ -24,6 +24,8 @@ async function crearBloquesConTalleres(eventoId, orgId, bloques, trx = db) {
         cantidad_elegible: bloque.cantidadElegible,
         es_obligatorio: bloque.esObligatorio,
         orden: bloque.orden,
+        inicio: bloque.inicio ?? null,
+        fin: bloque.fin ?? null,
       })
       .returning('*');
 
@@ -187,6 +189,31 @@ async function desasignarParticipante(participanteId, tallerId, trx = db) {
     .del();
 }
 
+async function crearTalleresSueltos(eventoId, orgId, talleres, trx = db) {
+  if (!talleres.length) return [];
+  return trx('taller').insert(
+    talleres.map((t) => ({
+      org_id: orgId,
+      evento_id: eventoId,
+      nombre: t.nombre,
+      descripcion: t.descripcion ?? null,
+      inicio: t.inicio,
+      fin: t.fin,
+      capacidad: t.capacidad ?? null,
+      lugar_id: t.lugarId ?? null,
+      bloque_taller_id: null,
+      es_obligatorio: t.esObligatorio ?? false,
+    }))
+  ).returning('*');
+}
+
+async function listarTalleresSueltosPorEvento(eventoId, trx = db) {
+  return trx('taller')
+    .whereNull('bloque_taller_id')
+    .where({ evento_id: eventoId })
+    .orderBy('inicio', 'asc');
+}
+
 module.exports = {
   crearBloquesConTalleres,
   listarBloquesPorEvento,
@@ -203,4 +230,6 @@ module.exports = {
   contarInscripcionesDelParticipanteEnBloque,
   asignarParticipante,
   desasignarParticipante,
+  crearTalleresSueltos,
+  listarTalleresSueltosPorEvento
 };
