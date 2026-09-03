@@ -4,10 +4,10 @@ const eventosRepository = require('../../eventos/repositories/eventos.repository
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const { desencriptar } = require('../../../utils/encryption');
 const ExcelJS = require('exceljs');
-const { calcularEdad } = require('../../participantes/services/participantes.service');
 const { templateAsignacionGrupo } = require('../../../utils/mailTemplates');
 const { enviarMail } = require('../../../utils/mail');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const calcularEdad = require('../../../utils/calcularEdad');
 
 // ─── PRESETS DE NOMBRES ──────────────────────────────────────────────────────
 
@@ -258,6 +258,7 @@ async function editarEsquema(eventoId, esquemaId, orgId, datos) {
   if (datos.accionSinNombres !== undefined) datosDb.accion_sin_nombres = datos.accionSinNombres;
   if (datos.nombresPreset !== undefined) datosDb.nombres_preset = datos.nombresPreset;
   if (datos.nombresLista !== undefined) datosDb.nombres_lista = JSON.stringify(datos.nombresLista);
+  if (datos.mantenerGruposInscripcion !== undefined) datosDb.mantener_grupos_inscripcion = datos.mantenerGruposInscripcion;
 
   invalidar(`esquemas:evento:${eventoId}`);
   return repo.actualizarEsquema(esquemaId, datosDb);
@@ -325,58 +326,53 @@ async function quitarExcluido(eventoId, esquemaId, participanteId, orgId) {
 async function preview(eventoId, esquemaId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const tandas = await repo.listarTandasPorEsquema(esquemaId);
+  const lista = resolverListaNombres(esquema);
+
   const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId);
   const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
 
   const participantes = await obtenerUniversoBase(esquema, eventoId);
-  const elegibles = aplicarFiltros(participantes, esquema, idsExcluidosAdmin);
+  const elegibles = participantes.filter(p => !idsExcluidosAdmin.has(p.id));
 
-  if (tandas.length === 0) {
-    const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
-    return {
-      tieneTandas: false,
-      totalElegibles: elegibles.length,
-      cantidadGrupos: cantGrupos,
-      pendientesEstimados: 0,
-    };
-  }
+  const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
+  const tamanoPromedio = Math.floor(elegibles.length / cantGrupos);
+  const sobrante = elegibles.length % cantGrupos;
 
-  const resultadosPorTanda = [];
-  let sinClasificar = 0;
-
-  for (const tanda of tandas) {
-    const enTanda = elegibles.filter(p =>
-      evaluarCondicion(
-        resolverAtributo(p, esquema.criterio_tanda_atributo),
-        tanda.condicion.operador,
-        tanda.condicion.valor,
-        tanda.condicion.valor2
-      )
-    );
-    const cantGrupos = calcularCantidadGrupos(enTanda.length, esquema.modo_tamano, esquema.valor_tamano);
-    resultadosPorTanda.push({ tandaId: tanda.id, nombre: tanda.nombre_resuelto, cantidad: enTanda.length, grupos: cantGrupos });
-  }
-
-  // Contar sin clasificar
-  const clasificados = new Set();
-  for (const tanda of tandas) {
-    for (const p of elegibles) {
-      if (evaluarCondicion(
-        resolverAtributo(p, esquema.criterio_tanda_atributo),
-        tanda.condicion.operador,
-        tanda.condicion.valor,
-        tanda.condicion.valor2
-      )) clasificados.add(p.id);
+  // Generar nombres de preview
+  const grupos = [];
+  for (let i = 0; i < cantGrupos; i++) {
+    let nombre;
+    try {
+      nombre = generarNombreGrupo({
+        modoNombrado: 'por_grupo',
+        lista,
+        accionSinNombres: esquema.accion_sin_nombres,
+        indiceGlobal: i,
+        nombreTanda: null,
+        indiceEnTanda: i,
+      });
+    } catch {
+      nombre = `Grupo ${i + 1}`;
     }
+    grupos.push({
+      nombre,
+      cantidad: tamanoPromedio + (i < sobrante ? 1 : 0),
+    });
   }
-  sinClasificar = elegibles.filter(p => !clasificados.has(p.id)).length;
+
+  const nombresDisponibles = lista.length;
+  const gruposNecesarios = cantGrupos;
+  const nombresAlcanzan = esquema.accion_sin_nombres === 'reciclar_numerado'
+    ? true  // siempre alcanza porque recicla
+    : nombresDisponibles >= gruposNecesarios;
 
   return {
-    tieneTandas: true,
-    tandas: resultadosPorTanda,
-    sinClasificar,
     totalElegibles: elegibles.length,
+    grupos,
+    pendientesEstimados: excluidosAdmin.length,
+    nombresAlcanzan,
+    nombresDisponibles,
+    gruposNecesarios,
   };
 }
 
@@ -454,45 +450,15 @@ function aplicarFiltros(participantes, esquema, idsExcluidosAdmin) {
 async function generar(eventoId, esquemaId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const tandas = await repo.listarTandasPorEsquema(esquemaId);
   const lista = resolverListaNombres(esquema);
 
-  // Validación previa: si modo_nombrado='por_grupo' y accion='bloquear_generacion'
-  // calcular total de grupos y comparar con lista
+  // Validación previa si bloquear_generacion
   if (esquema.modo_nombrado === 'por_grupo' && esquema.accion_sin_nombres === 'bloquear_generacion') {
+    const participantes = await obtenerUniversoBase(esquema, eventoId);
     const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId);
     const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
-    const participantes = await obtenerUniversoBase(esquema, eventoId);
-    const elegibles = aplicarFiltros(participantes, esquema, idsExcluidosAdmin);
-
-    // Agregar excluidos por sistema a pendientes
-    const idsElegibles = new Set(elegibles.map(p => p.id));
-    const excluidosSistema = participantes
-      .filter(p => !idsElegibles.has(p.id) && !idsExcluidosAdmin.has(p.id))
-      .map(p => ({
-        esquema_id: esquemaId,
-        participante_id: p.id,
-        motivo: 'excluido_sistema',
-      }));
-
-    pendientes.push(...excluidosSistema);
-
-    let totalGrupos = 0;
-    if (tandas.length === 0) {
-      totalGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
-    } else {
-      for (const tanda of tandas) {
-        const enTanda = elegibles.filter(p =>
-          evaluarCondicion(
-            resolverAtributo(p, esquema.criterio_tanda_atributo),
-            tanda.condicion.operador,
-            tanda.condicion.valor,
-            tanda.condicion.valor2
-          )
-        );
-        totalGrupos += calcularCantidadGrupos(enTanda.length, esquema.modo_tamano, esquema.valor_tamano);
-      }
-    }
+    const elegibles = participantes.filter(p => !idsExcluidosAdmin.has(p.id));
+    const totalGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
 
     if (totalGrupos > lista.length) {
       const error = new Error(`Los nombres se agotan: se generarían ${totalGrupos} grupos pero la lista solo tiene ${lista.length} nombres.`);
@@ -501,101 +467,120 @@ async function generar(eventoId, esquemaId, orgId) {
   }
 
   return db.transaction(async (trx) => {
-    // Leer excluidos ANTES de borrar
     const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId, trx);
     const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
 
-    // Recién ahora borrar todo lo generado anteriormente
     await repo.eliminarGruposDeEsquema(esquemaId, trx);
     await repo.eliminarPendientesDeEsquema(esquemaId, trx);
 
-    // Restaurar excluidos_admin en pendientes
-    const filasPendientesAdmin = excluidosAdmin.map(e => ({
+    const participantes = await obtenerUniversoBase(esquema, eventoId);
+    const elegibles = participantes.filter(p => !idsExcluidosAdmin.has(p.id));
+
+    const gruposParaInsertar = [];
+    const integrantesParaInsertar = [];
+    const pendientes = [...excluidosAdmin.map(e => ({
       esquema_id: esquemaId,
       participante_id: e.participante_id,
       motivo: 'excluido_admin',
-    }));
-
-    const participantes = await obtenerUniversoBase(esquema, eventoId);
-    const elegibles = aplicarFiltros(participantes, esquema, idsExcluidosAdmin);
-
-    const pendientes = [];
-    const gruposParaInsertar = [];
-    const integrantesParaInsertar = [];
+    }))];
 
     let indiceGlobalGrupo = 0;
 
-    const procesarConjunto = (conjunto, tandaId, nombreTanda) => {
-      if (conjunto.length === 0) return;
+    if (esquema.mantener_grupos_inscripcion) {
+      // ── MODO: mantener grupos de inscripción juntos ──────────────────────
 
-      const cantGrupos = calcularCantidadGrupos(conjunto.length, esquema.modo_tamano, esquema.valor_tamano);
-      const subgrupos = distribuir(conjunto, cantGrupos, esquema.balanceo_atributo);
+      // Separar en grupos de inscripción e individuales
+      const porGrupo = {};
+      const individuales = [];
 
-      subgrupos.forEach((integrantes, idxEnTanda) => {
-        let nombre;
-        try {
-          nombre = generarNombreGrupo({
-            modoNombrado: esquema.modo_nombrado,
-            lista,
-            accionSinNombres: esquema.accion_sin_nombres,
-            indiceGlobal: indiceGlobalGrupo,
-            nombreTanda,
-            indiceEnTanda: idxEnTanda,
-          });
-        } catch (e) {
-          if (e.message === 'NOMBRES_AGOTADOS') throw e;
-          nombre = `Grupo ${indiceGlobalGrupo + 1}`;
+      for (const p of elegibles) {
+        if (p.grupo_id) {
+          if (!porGrupo[p.grupo_id]) porGrupo[p.grupo_id] = [];
+          porGrupo[p.grupo_id].push(p);
+        } else {
+          individuales.push(p);
         }
+      }
+
+      const gruposInscripcion = Object.values(porGrupo);
+
+      // Calcular cantidad de grupos de trabajo
+      const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
+
+      // Distribuir grupos de inscripción completos en grupos de trabajo
+      const buckets = Array.from({ length: cantGrupos }, () => []);
+      const tamanosBuckets = Array(cantGrupos).fill(0);
+
+      // Ordenar grupos de inscripción de mayor a menor para mejor distribución
+      gruposInscripcion.sort((a, b) => b.length - a.length);
+
+      for (const grupo of gruposInscripcion) {
+        // Asignar al bucket con menos participantes (greedy)
+        const minIdx = tamanosBuckets.indexOf(Math.min(...tamanosBuckets));
+        buckets[minIdx].push(...grupo);
+        tamanosBuckets[minIdx] += grupo.length;
+      }
+
+      // Distribuir individuales secuencialmente
+      individuales.forEach((p, i) => {
+        buckets[i % cantGrupos].push(p);
+        tamanosBuckets[i % cantGrupos]++;
+      });
+
+      // Crear grupos
+      buckets.forEach((integrantes, idx) => {
+        const nombre = generarNombreGrupo({
+          modoNombrado: 'por_grupo',
+          lista,
+          accionSinNombres: esquema.accion_sin_nombres,
+          indiceGlobal: indiceGlobalGrupo,
+          nombreTanda: null,
+          indiceEnTanda: idx,
+        });
 
         gruposParaInsertar.push({
           org_id: esquema.org_id,
           evento_id: eventoId,
           esquema_id: esquemaId,
-          tanda_id: tandaId ?? null,
+          tanda_id: null,
           nombre,
           orden_global: indiceGlobalGrupo,
         });
 
-        // Guardamos los integrantes para asignarlos después de insertar los grupos (necesitamos el id)
         integrantesParaInsertar.push(integrantes.map(p => p.id));
         indiceGlobalGrupo++;
       });
-    };
-
-    if (tandas.length === 0) {
-      // Sin tandas: todo el universo elegible como un solo conjunto
-      procesarConjunto(elegibles, null, null);
 
     } else {
-      const clasificados = new Set();
+      // ── MODO: aleatorio ──────────────────────────────────────────────────
+      const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
+      const subgrupos = distribuir(elegibles, cantGrupos, null);
 
-      for (const tanda of tandas) {
-        const enTanda = elegibles.filter(p => {
-          const val = resolverAtributo(p, esquema.criterio_tanda_atributo);
-          return evaluarCondicion(val, tanda.condicion.operador, tanda.condicion.valor, tanda.condicion.valor2);
+      subgrupos.forEach((integrantes, idx) => {
+        const nombre = generarNombreGrupo({
+          modoNombrado: 'por_grupo',
+          lista,
+          accionSinNombres: esquema.accion_sin_nombres,
+          indiceGlobal: indiceGlobalGrupo,
+          nombreTanda: null,
+          indiceEnTanda: idx,
         });
 
-        enTanda.forEach(p => clasificados.add(p.id));
-        procesarConjunto(enTanda, tanda.id, tanda.nombre_resuelto ?? `Tanda ${tanda.orden + 1}`);
-      }
+        gruposParaInsertar.push({
+          org_id: esquema.org_id,
+          evento_id: eventoId,
+          esquema_id: esquemaId,
+          tanda_id: null,
+          nombre,
+          orden_global: indiceGlobalGrupo,
+        });
 
-      // Sin clasificar
-      const sinClasificar = elegibles.filter(p => !clasificados.has(p.id));
-      sinClasificar.forEach(p => pendientes.push({ esquema_id: esquemaId, participante_id: p.id, motivo: 'sin_clasificar' }));
+        integrantesParaInsertar.push(integrantes.map(p => p.id));
+        indiceGlobalGrupo++;
+      });
     }
 
-    // Agregar excluidos por sistema
-    const idsElegibles = new Set(elegibles.map(p => p.id));
-    const excluidosSistema = participantes
-      .filter(p => !idsElegibles.has(p.id) && !idsExcluidosAdmin.has(p.id))
-      .map(p => ({
-        esquema_id: esquemaId,
-        participante_id: p.id,
-        motivo: 'excluido_sistema',
-      }));
-    pendientes.push(...excluidosSistema);
-
-    // Insertar grupos y asignar integrantes
+    // Insertar grupos
     const gruposInsertados = await repo.crearGruposTrabajo(gruposParaInsertar, trx);
 
     const filasMiembros = [];
@@ -605,33 +590,20 @@ async function generar(eventoId, esquemaId, orgId) {
       });
     });
 
-    if (filasMiembros.length > 0) {
-      await repo.agregarIntegrantes(filasMiembros, trx);
-    }
+    if (filasMiembros.length > 0) await repo.agregarIntegrantes(filasMiembros, trx);
+    if (pendientes.length > 0) await repo.agregarPendientes(pendientes, trx);
 
-    // Insertar pendientes (sin_clasificar + excluidos_admin)
-    const todosLosPendientes = [...pendientes, ...filasPendientesAdmin];
-    if (todosLosPendientes.length > 0) {
-      await repo.agregarPendientes(todosLosPendientes, trx);
-    }
-
-    // Actualizar estado del esquema
     await repo.actualizarEsquema(esquemaId, {
       estado: 'generado',
       generado_en: new Date(),
     }, trx);
 
-    invalidar(`grupos_trabajo:${esquemaId}`);
-    invalidar(`pendientes:${esquemaId}`);
-    invalidar(`esquema:${esquemaId}`);
-
     return {
       gruposGenerados: gruposInsertados.length,
-      pendientes: todosLosPendientes.length,
+      pendientes: pendientes.length,
     };
   });
 }
-
 // ─── AJUSTES MANUALES ────────────────────────────────────────────────────────
 
 async function asignarAGrupo(eventoId, esquemaId, grupoId, participanteId, orgId) {
@@ -1147,6 +1119,50 @@ async function enviarMailAsignacion(eventoId, esquemaId, participanteId, orgId) 
   await enviarMail({ to: resultado.email, subject, html });
 }
 
+async function enviarMailAsignacionPorGrupo(eventoId, esquemaId, grupoId, orgId) {
+  await verificarEventoDeLaOrg(eventoId, orgId);
+  const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
+
+  if (esquema.estado !== 'generado') {
+    const error = new Error('El esquema todavía no fue generado');
+    error.status = 400; throw error;
+  }
+
+  const evento = await eventosRepository.buscarPorId(eventoId);
+  const grupo = await repo.buscarGrupoPorId(grupoId);
+
+  if (!grupo || grupo.esquema_id !== esquemaId) {
+    const error = new Error('Grupo no encontrado en este esquema');
+    error.status = 404; throw error;
+  }
+
+  const asignaciones = await db('grupo_trabajo_participante')
+    .join('participante', 'participante.id', 'grupo_trabajo_participante.participante_id')
+    .where('grupo_trabajo_participante.grupo_trabajo_id', grupoId)
+    .select('participante.nombre', 'participante.apellido', 'participante.email');
+
+  let enviados = 0;
+  let errores = 0;
+
+  for (const a of asignaciones) {
+    try {
+      const { subject, html } = templateAsignacionGrupo({
+        participante: { nombre: a.nombre, apellido: a.apellido },
+        grupo: { nombre: grupo.nombre },
+        esquema: { nombre: esquema.nombre },
+        evento,
+      });
+      await enviarMail({ to: a.email, subject, html });
+      enviados++;
+    } catch (err) {
+      console.error(`[grupos] Error al enviar mail a ${a.email}:`, err.message);
+      errores++;
+    }
+  }
+
+  return { enviados, errores, total: asignaciones.length };
+}
+
 /**
  * Envía mail de asignación de grupo a TODOS los participantes del esquema.
  * Fire and forget — no bloquea, pero reporta errores por consola.
@@ -1219,5 +1235,6 @@ module.exports = {
   generarExcelGrupos,
   generarExcelGrupoIndividual,
   enviarMailAsignacion,
+  enviarMailAsignacionPorGrupo,
   enviarMailAsignacionMasivo
 };

@@ -90,8 +90,8 @@ async function listarEliminadosPorEvento(eventoId) {
  */
 async function contarPorEvento(eventoId, trx = db) {
   const [{ count }] = await trx('participante')
-    .where({ evento_id: eventoId, activo: true }) // ← agregar
-    .count('id');
+    .where({ evento_id: eventoId, activo: true })
+    .count('id as count');
   return Number(count);
 }
 

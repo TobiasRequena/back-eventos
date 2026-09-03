@@ -11,23 +11,16 @@ const {
   idParamSchema,
   buscarPorCodigoSchema,
 } = require('../schemas/eventos.schema');
+const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
-// IMPORTANTE: esta ruta pública va ANTES de aplicar autenticar/resolverOrganizacionActiva,
-// porque no requiere sesión — cualquier persona buscando un evento para inscribirse
-// debe poder usarla sin estar logueada.
 router.get(
   '/codigo/:codigo',
   validate(buscarPorCodigoSchema),
   eventosController.buscarPorCodigo
 );
 
-// A partir de acá, todo requiere estar logueado.
 router.use(autenticar);
 
-// Requiere token pero NO requiere X-Org-Id — la disponibilidad de un código
-// es global (entre todos los eventos vigentes), no está limitada a una org.
-// Va ANTES de resolverOrganizacionActiva y ANTES de /codigo/:codigo para que
-// Express no interprete "disponible" como el valor del param :codigo.
 router.get(
   '/codigo/:codigo/disponible',
   validate(buscarPorCodigoSchema),
@@ -40,11 +33,11 @@ router.post('/', validate(crearEventoSchema), eventosController.crear);
 router.get('/', eventosController.listar);
 router.get('/stats/inscripciones', eventosController.statsInscripciones);
 router.get('/:id', validate(idParamSchema), eventosController.obtener);
-router.patch('/:id', validate(editarEventoSchema), eventosController.editar);
-router.delete('/:id', validate(idParamSchema), eventosController.eliminar);
-router.get('/:id/stats', validate(idParamSchema), eventosController.stats);
+router.patch('/:id', validate(editarEventoSchema), verificarPagoPendiente, eventosController.editar);
+router.delete('/:id', validate(idParamSchema), verificarPagoPendiente, eventosController.eliminar);
+router.get('/:id/stats', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.stats);
 router.get('/:id/inscriptos/excel', validate(idParamSchema), eventosController.descargarExcel);
-router.get('/:id/participantes/pendientes-pago', autenticar, resolverOrganizacionActiva, eventosController.listarPendientesPago);
-router.get('/:id/fichas-medicas', autenticar, resolverOrganizacionActiva, eventosController.listarFichasMedicas);
+router.get('/:id/participantes/pendientes-pago', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.listarPendientesPago);
+router.get('/:id/fichas-medicas', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.listarFichasMedicas);
 
 module.exports = router;

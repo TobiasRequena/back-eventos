@@ -38,6 +38,7 @@ const routerPagos = require('./modules/pagos/routes/pagos.routes');
 const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
 const routerSoporte = require('./modules/soporte/routes/soporte.routes');
 const routerAdmin = require('./modules/admin/routes/admin.routes');
+const routerComunicaciones = require('./modules/comunicaciones/routes/comunicaciones.routes');
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -122,6 +123,9 @@ app.use('/api/v1/soporte', routerSoporte);
 
 //Admin
 app.use('/api/v1/admin', routerAdmin);
+
+//Comunicaciones
+app.use('/api/v1/eventos/:eventoId/comunicaciones', routerComunicaciones);
 
 // 404 para rutas no encontradas
 app.use((req, res) => {

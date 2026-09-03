@@ -14,6 +14,7 @@ const {
 const { quitarExcluidoSchema } = require('../schemas/gruposTrabajo.schema');
 const { quitarDeGrupoSchema } = require('../schemas/gruposTrabajo.schema');
 const verificarPagoEvento = require('../../../middlewares/verificarPagoEvento');
+const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
 // Todos los endpoints requieren auth
 router.use(autenticar);
@@ -41,7 +42,7 @@ router.delete('/:esquemaId/excluidos/:participanteId', validate(quitarExcluidoSc
 
 // ─── PREVIEW Y GENERACIÓN ────────────────────────────────────────────────────
 router.get('/:esquemaId/preview', validate(esquemaIdParamSchema), controller.preview);
-router.post('/:esquemaId/generar', verificarPagoEvento(24), validate(esquemaIdParamSchema), controller.generar);
+router.post('/:esquemaId/generar', verificarPagoPendiente, validate(esquemaIdParamSchema), controller.generar);
 router.get(
   '/:esquemaId/excel',
   autenticar,
@@ -70,6 +71,14 @@ router.post(
   resolverOrganizacionActiva,
   validate(esquemaIdParamSchema),
   controller.enviarMailAsignacionMasivo
+);
+
+router.post(
+  '/:esquemaId/grupos/:grupoId/notificar',
+  autenticar,
+  resolverOrganizacionActiva,
+  validate(grupoIdParamSchema),
+  controller.enviarMailAsignacionPorGrupo
 );
 
 router.post(

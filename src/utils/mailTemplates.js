@@ -256,39 +256,42 @@ function templateInfoGrupoResponsable({ responsable, grupo, evento }) {
   };
 }
 
-function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, cantidadParticipantes }) {
+function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, cantidadParticipantes, esUrgente = false }) {
   return {
-    subject: `Pago pendiente — ${evento.nombre}`,
+    subject: esUrgente
+      ? `Aviso importante — ${evento.nombre} superó el límite de inscriptos`
+      : `Pago de plataforma pendiente — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
       <head><meta charset="UTF-8"></head>
       <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
         
-        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          Pago pendiente de plataforma
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          ${esUrgente ? '🚨 Límite de inscriptos superado' : '💳 Pago de plataforma pendiente'}
         </h1>
 
-        <p>El evento <strong>${evento.nombre}</strong> cruzó un nuevo tramo de inscriptos.</p>
+        <p>${esUrgente
+        ? `El evento <strong>${evento.nombre}</strong> superó el límite de inscriptos del plan actual. <strong>Las funciones del evento han sido bloqueadas</strong> hasta que regularices el pago.`
+        : `El evento <strong>${evento.nombre}</strong> está acercándose al límite de inscriptos del plan actual.`
+      }</p>
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <p style="margin: 4px 0;"><strong>Evento:</strong> ${evento.nombre}</p>
           <p style="margin: 4px 0;"><strong>Inscriptos actuales:</strong> ${cantidadParticipantes}</p>
-          <p style="margin: 4px 0;"><strong>Monto a pagar:</strong> $${monto.toLocaleString('es-AR')}</p>
+          <p style="margin: 4px 0;"><strong>Monto a pagar:</strong> $${Number(monto).toLocaleString('es-AR')}</p>
         </div>
 
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${linkPago}" 
-             style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px;">
+          <a href="${linkPago}"
+             style="background: #1E3A5F; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px;">
             Pagar ahora
           </a>
         </div>
 
         <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
           Este mail fue generado automáticamente por Talita Encuentros.
-          Si ya realizaste el pago, ignorá este mensaje.
         </p>
-
       </body>
       </html>
     `,

@@ -11,7 +11,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  * Función base para enviar mails via Resend.
  * Todos los mails de la plataforma pasan por acá.
  */
-async function enviarMail({ to, subject, html, attachments = [] }) {
+async function enviarMail({ to, subject, html, from, attachments = [] }) {
   if (!to || !subject || !html) {
     console.error('[mail] Parámetros incompletos:', { to, subject });
     return { ok: false, error: 'Parámetros incompletos' };
@@ -19,7 +19,7 @@ async function enviarMail({ to, subject, html, attachments = [] }) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: `Talita Encuentro <${process.env.MAIL_FROM1}>`,
+      from: from || `Talita Encuentro <${process.env.MAIL_FROM1}>`,
       to,
       subject,
       html,

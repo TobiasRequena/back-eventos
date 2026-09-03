@@ -1,13 +1,5 @@
 const { desencriptar } = require('./encryption');
-
-function calcularEdad(nacimiento) {
-  if (!nacimiento) return null;
-  const hoy = new Date();
-  const nac = new Date(nacimiento);
-  let edad = hoy.getFullYear() - nac.getFullYear();
-  if (hoy < new Date(hoy.getFullYear(), nac.getMonth(), nac.getDate())) edad--;
-  return edad;
-}
+const calcularEdad = require('./calcularEdad');
 
 function sanitizarParticipante(participante, contexto = 'admin') {
   const tieneFicha = Boolean(participante.tiene_ficha_medica);

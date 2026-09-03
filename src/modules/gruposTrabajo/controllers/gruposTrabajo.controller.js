@@ -214,6 +214,18 @@ async function enviarMailAsignacion(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function enviarMailAsignacionPorGrupo(req, res, next) {
+  try {
+    const resultado = await service.enviarMailAsignacionPorGrupo(
+      req.params.eventoId,
+      req.params.esquemaId,
+      req.params.grupoId,
+      req.orgId
+    );
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
 async function enviarMailAsignacionMasivo(req, res, next) {
   try {
     const resultado = await service.enviarMailAsignacionMasivo(
@@ -247,5 +259,6 @@ module.exports = {
   descargarExcelGrupos,
   descargarExcelGrupoIndividual,
   enviarMailAsignacion,
+  enviarMailAsignacionPorGrupo,
   enviarMailAsignacionMasivo,
 };

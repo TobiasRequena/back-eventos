@@ -23,6 +23,7 @@ const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
+const calcularEdad = require('../../../utils/calcularEdad');
 
 /**
  * Calcula si una persona es mayor de edad al momento de la inscripción.
@@ -370,16 +371,6 @@ async function crearParticipante(orgId, datos) {
 
         const participanteActualizado = await participantesRepository.buscarPorId(participante.id);
 
-        if (participanteActualizado.estado_alta_plataforma !== 'confirmado') {
-          enviarMail({
-            to: datosParaMail.email,
-            subject: `📋 Inscripción recibida — ${evento.nombre}`,
-            html: `<p>Hola ${datosParaMail.nombre}, tu inscripción fue recibida pero está pendiente de confirmación.</p>
-               <p>Una vez que el organizador regularice el pago de la plataforma, recibirás tu credencial con QR.</p>`,
-          });
-          return;
-        }
-
         if (evento.costo == 0 || evento.costo === null) {
           const credencialBuffer = await generarCredencial({
             qrPersonal: datosParaMail.qrPersonal,
@@ -508,7 +499,7 @@ async function editarParticipante(id, orgId, datos) {
  * eso lo dejamos como validación futura cuando exista el módulo grupos completo.
  */
 async function eliminarParticipante(id, orgId) {
-  await obtenerParticipante(id, orgId);
+  const participante = await obtenerParticipante(id, orgId);
   await participantesRepository.eliminar(id);
 
   invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
@@ -595,28 +586,33 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
   const evento = await buscarEventoCacheado(participante.evento_id);
 
   let dniLegible = participante.dni;
-  try { dniLegible = desencriptar(participante.dni); } catch { }
+  try {
+    dniLegible = desencriptar(participante.dni);
+  } catch { }
 
   const credencialBuffer = await generarCredencial({
     qrPersonal: participante.qr_personal,
     nombreEvento: evento.nombre,
     nombreParticipante: `${participante.nombre} ${participante.apellido}`,
     dni: dniLegible,
-    esReferente: participante.rol_grupo === 'responsable'
+    esReferente: participante.rol_grupo === 'responsable',
   });
 
   let grupo = null;
-  if (participanteActualizado.grupo_id) {
-    grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
+
+  if (participante.grupo_id) {
+    grupo = await gruposRepository.buscarPorId(participante.grupo_id);
   }
 
   const { subject, html } = templateConfirmacionInscripcion({
-    participante: { ...participanteActualizado, dni: datosParaMail.dni },
+    participante: {
+      ...participante,
+      dni: dniLegible,
+    },
     evento,
     grupo,
   });
 
-  // Si viene emailOverride, lo usamos; sino el del participante
   const destinatario = emailOverride ?? participante.email;
 
   await enviarMail({
@@ -648,15 +644,6 @@ async function listarEliminados(eventoId, orgId) {
 
   const eliminados = await participantesRepository.listarEliminadosPorEvento(eventoId);
   return eliminados.map((p) => sanitizarParticipante(p, 'admin'));
-}
-
-function calcularEdad(nacimiento) {
-  if (!nacimiento) return null;
-  const hoy = new Date();
-  const nac = new Date(nacimiento);
-  let edad = hoy.getFullYear() - nac.getFullYear();
-  if (hoy < new Date(hoy.getFullYear(), nac.getMonth(), nac.getDate())) edad--;
-  return edad;
 }
 
 async function subirAutorizacion(id, orgId, file) {
@@ -814,7 +801,6 @@ module.exports = {
   sanitizarParticipante,
   reenviarMailInscripcion,
   listarEliminados,
-  calcularEdad,
   subirAutorizacion,
   subirCertificado,
   verificarDniEnEvento,

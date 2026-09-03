@@ -3,8 +3,8 @@ const talleresRepository = require('../repositories/talleres.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const ExcelJS = require('exceljs');
 const { desencriptar } = require('../../../utils/encryption');
-const { calcularEdad } = require('../../participantes/services/participantes.service');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const calcularEdad = require('../../../utils/calcularEdad');
 
 const ESTADO_PAGO_LABELS = {
   no_aplica: 'Sin costo',

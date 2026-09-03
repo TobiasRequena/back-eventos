@@ -26,17 +26,15 @@ const condicionTandaSchema = z.object({
 
 const crearEsquemaSchema = z.object({
   params: z.object({
-    eventoId: z.string().uuid('Id de evento inválido'),
+    eventoId: z.string().uuid(),
   }),
   body: z.object({
     nombre: z.string().min(1).max(150),
     universoBase: z.enum(['inscriptos', 'acreditados']).default('inscriptos'),
-    criterioTandaAtributo: atributoSchema.optional(),
     modoTamano: z.enum(['por_cantidad', 'por_tamano']),
     valorTamano: z.number().int().positive(),
-    balanceoAtributo: atributoSchema.optional(),
-    filtroElegibilidad: z.array(condicionFiltroSchema).max(3).optional(),
-    modoNombrado: z.enum(['por_tanda', 'por_grupo']).default('por_grupo'),
+    mantenerGruposInscripcion: z.boolean().default(false),
+    modoNombrado: z.enum(['por_grupo']).default('por_grupo'),
     accionSinNombres: z.enum(['bloquear_generacion', 'reciclar_numerado']).default('reciclar_numerado'),
     nombresPreset: z.enum(['letras', 'colores', 'animales', 'comidas', 'custom']).default('letras'),
     nombresLista: z.array(z.string()).default([]),
@@ -51,12 +49,9 @@ const editarEsquemaSchema = z.object({
   body: z.object({
     nombre: z.string().min(1).max(150).optional(),
     universoBase: z.enum(['inscriptos', 'acreditados']).optional(),
-    criterioTandaAtributo: atributoSchema.nullable().optional(),
     modoTamano: z.enum(['por_cantidad', 'por_tamano']).optional(),
     valorTamano: z.number().int().positive().optional(),
-    balanceoAtributo: atributoSchema.nullable().optional(),
-    filtroElegibilidad: z.array(condicionFiltroSchema).max(3).nullable().optional(),
-    modoNombrado: z.enum(['por_tanda', 'por_grupo']).optional(),
+    mantenerGruposInscripcion: z.boolean().optional(),
     accionSinNombres: z.enum(['bloquear_generacion', 'reciclar_numerado']).optional(),
     nombresPreset: z.enum(['letras', 'colores', 'animales', 'comidas', 'custom']).optional(),
     nombresLista: z.array(z.string()).optional(),

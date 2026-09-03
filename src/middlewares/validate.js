@@ -8,11 +8,20 @@ function validate(schema) {
       });
 
       if (!resultado.success) {
-        const errores = resultado.error?.errors?.map((e) => ({
+        console.log('❌ Error de validación:');
+        console.log(resultado.error.issues);
+
+        const errores = resultado.error.issues.map((e) => ({
           campo: e.path.join('.'),
           mensaje: e.message,
-        })) ?? [];
-        return res.status(400).json({ error: { message: 'Error de validación', detalles: errores } });
+        }));
+
+        return res.status(400).json({
+          error: {
+            message: 'Error de validación',
+            detalles: errores,
+          },
+        });
       }
 
       req.body = resultado.data.body ?? req.body;

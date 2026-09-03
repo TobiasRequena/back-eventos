@@ -68,8 +68,9 @@ async function eliminar(req, res, next) {
  * Lo usa el formulario de inscripción que ve cualquier persona externa.
  */
 async function buscarPorCodigo(req, res, next) {
+  const codigo = req.params.codigo.toUpperCase();
   try {
-    const evento = await eventosService.buscarPorCodigoPublico(req.params.codigo);
+    const evento = await eventosService.buscarPorCodigoPublico(codigo);
     res.status(200).json({ evento });
   } catch (error) {
     next(error);

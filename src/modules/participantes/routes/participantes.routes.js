@@ -20,21 +20,18 @@ const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const fichaMedicaController = require('../../fichaMedica/controllers/fichaMedica.controller');
 const { crearFichaMedicaSchema } = require('../../fichaMedica/schemas/fichaMedica.schema');
 const { actualizarEstadoPagoSchema } = require('../schemas/participantes.schema');
+const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
 // Router anidado: GET /eventos/:eventoId/participantes (requiere auth)
 const routerAnidado = express.Router({ mergeParams: true });
 routerAnidado.use(autenticar);
 routerAnidado.use(resolverOrganizacionActiva);
-routerAnidado.get('/:eventoId/participantes/eliminados', participantesController.listarEliminados);
-routerAnidado.get('/:eventoId/participantes', participantesController.listar);
+routerAnidado.get('/:eventoId/participantes/eliminados', verificarPagoPendiente, participantesController.listarEliminados);
+routerAnidado.get('/:eventoId/participantes', verificarPagoPendiente, participantesController.listar);
 
 // Router público: inscripción externa y subida de documentación post-inscripción (sin auth obligatoria)
 const routerPublico = express.Router();
-routerPublico.post(
-  '/',
-  validate(crearParticipanteSchema),
-  participantesController.crear
-);
+routerPublico.post('/', verificarPagoPendiente, validate(crearParticipanteSchema), participantesController.crear);
 routerPublico.get('/verificar-dni', participantesController.verificarDni);
 routerPublico.patch('/:id/autorizacion', upload.single('archivo'), participantesController.subirAutorizacion);
 routerPublico.patch('/:id/certificado', upload.single('archivo'), participantesController.subirCertificado);

@@ -66,7 +66,16 @@ async function cancelarPagosPendientes(eventoId, trx = db) {
 async function listarTramos() {
   return db('tramo_precio_plataforma')
     .where({ activo: true })
-    .orderBy('participantes_desde', 'asc');
+    .orderBy('participantes_desde', 'asc')
+    .select(
+      'id',
+      'participantes_desde',
+      'participantes_hasta',
+      'monto_fijo',
+      'precio_por_participante_desde',
+      'precio_por_participante_hasta',
+      'activo'
+    );
 }
 
 async function listarPagosPorEvento(eventoId) {
@@ -105,6 +114,19 @@ async function listarEventosActivosConPago(orgId) {
     .orderBy('creado_en', 'desc')
     .select('evento_id', 'estado', 'monto', 'creado_en');
 
+  // Buscar tramo por monto para cada pago pendiente
+  const tramoPorPago = {};
+  for (const p of pagos) {
+    if (p.estado === 'pendiente') {
+      const tramo = await db('tramo_precio_plataforma')
+        .where('monto_fijo', '>=', p.monto)
+        .where('activo', true)
+        .orderBy('monto_fijo', 'asc')
+        .first();
+      if (tramo) tramoPorPago[p.evento_id] = tramo.id;
+    }
+  }
+
   const pagoMap = {};
   for (const p of pagos) {
     if (!pagoMap[p.evento_id]) pagoMap[p.evento_id] = p;
@@ -119,6 +141,7 @@ async function listarEventosActivosConPago(orgId) {
     participantes_facturados: e.participantes_facturados ?? 0,
     estado_pago: pagoMap[e.id]?.estado ?? 'sin_cargo',
     monto_ultimo_pago: pagoMap[e.id]?.monto ?? null,
+    tramo_pendiente_id: pagoMap[e.id]?.estado === 'pendiente' ? tramoPorPago[e.id] ?? null : null,
   }));
 }
 
@@ -163,7 +186,8 @@ async function listarHistorialPagos(orgId) {
       participantes_facturados: e.participantes_facturados ?? 0,
       tramo_alcanzado: tramo ? {
         participantes_desde: tramo.participantes_desde,
-        precio_por_participante: tramo.precio_por_participante,
+        participantes_hasta: tramo.participantes_hasta,
+        monto_fijo: tramo.monto_fijo,
       } : null,
       monto_total: pago?.monto ?? null,
       estado_final: pago?.estado ?? 'sin_cargo',

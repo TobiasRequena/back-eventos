@@ -7,10 +7,10 @@ const archivosRepository = require('../../archivos/repositories/archivos.reposit
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const pagosRepository = require('../../pagos/repositories/pagos.repository');
 const { desencriptar } = require('../../../utils/encryption');
-const { calcularEdad } = require('../../participantes/services/participantes.service');
 const { construirUrlPublica } = require('../../../utils/storage');
 const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
 const sanitizarParticipante = require('../../../utils/sanitizarParticipante')
+const calcularEdad = require('../../../utils/calcularEdad');
 
 const ESTADO_PAGO_LABELS = {
   no_aplica: 'Sin costo',
@@ -142,7 +142,7 @@ async function listarEventos(orgId) {
           ...evento,
           cantidadInscriptos,
           imagenUrl: construirUrlPublica(portada?.key),
-          pagoPlatforma: pagoPendiente
+          pagoPlataforma: pagoPendiente
             ? {
               estado: pagoPendiente.estado,
               monto: pagoPendiente.monto,
@@ -173,46 +173,44 @@ async function listarEventos(orgId) {
  * con evento_id = este evento).
  */
 async function obtenerEvento(id, orgId) {
-  return getOrSet(`evento:${id}`, async () => {
-    const evento = await eventosRepository.buscarPorId(id);
+  const evento = await eventosRepository.buscarPorId(id);
 
-    if (!evento) {
-      const error = new Error('Evento no encontrado');
-      error.status = 404;
-      throw error;
-    }
+  if (!evento) {
+    const error = new Error('Evento no encontrado');
+    error.status = 404;
+    throw error;
+  }
 
-    if (evento.org_id !== orgId) {
-      const error = new Error('No tenés permisos sobre este evento');
-      error.status = 403;
-      throw error;
-    }
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento');
+    error.status = 403;
+    throw error;
+  }
 
-    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
-      formulariosRepository.listarPorEvento(evento.id),
-      talleresRepository.listarBloquesPorEvento(evento.id),
-      archivosRepository.buscarPortadaDeEvento(evento.id),
-      participantesRepository.contarPorEvento(evento.id),
-      pagosRepository.buscarPagoPendientePorEvento(evento.id),
-      talleresRepository.listarTalleresSueltosPorEvento(evento.id),
-    ]);
+  const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
+    formulariosRepository.listarPorEvento(evento.id),
+    talleresRepository.listarBloquesPorEvento(evento.id),
+    archivosRepository.buscarPortadaDeEvento(evento.id),
+    participantesRepository.contarPorEvento(evento.id),
+    pagosRepository.buscarPagoPendientePorEvento(evento.id),
+    talleresRepository.listarTalleresSueltosPorEvento(evento.id),
+  ]);
 
-    return {
-      ...evento,
-      camposForm,
-      bloquesTaller,
-      talleresSueltos,
-      cantidadInscriptos,
-      imagenUrl: construirUrlPublica(portada?.key),
-      pagoPlatforma: pagoPendiente
-        ? {
-          estado: pagoPendiente.estado,
-          monto: pagoPendiente.monto,
-          pagoId: pagoPendiente.id,
-        }
-        : null,
-    };
-  });
+  return {
+    ...evento,
+    camposForm,
+    bloquesTaller,
+    talleresSueltos,
+    cantidadInscriptos,
+    imagenUrl: construirUrlPublica(portada?.key),
+    pagoPlataforma: pagoPendiente
+      ? {
+        estado: pagoPendiente.estado,
+        monto: pagoPendiente.monto,
+        pagoId: pagoPendiente.id,
+      }
+      : null,
+  };
 }
 
 /**
@@ -344,122 +342,120 @@ async function obtenerStats(id, orgId) {
   if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
   if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
-  return getOrSet(`stats:evento:${id}`, async () => {
-    const [totalInscriptos, bloques, campos, filas, talleresSueltos, resumenPagos, kpisFicha, cantidadAcreditados] = await Promise.all([
-      eventosRepository.contarInscriptos(id),
-      talleresRepository.listarBloquesPorEvento(id),
-      formulariosRepository.listarPorEvento(id),
-      eventosRepository.listarRespuestasForm(id),
-      talleresRepository.listarTalleresSueltosPorEvento(id),
-      eventosRepository.resumenPagos(id),
-      eventosRepository.kpisFichaMedica(id),
-      eventosRepository.contarAcreditados(id), // ← nuevo
-    ]);
+  const [totalInscriptos, bloques, campos, filas, talleresSueltos, resumenPagos, kpisFicha, cantidadAcreditados] = await Promise.all([
+    eventosRepository.contarInscriptos(id),
+    talleresRepository.listarBloquesPorEvento(id),
+    formulariosRepository.listarPorEvento(id),
+    eventosRepository.listarRespuestasForm(id),
+    talleresRepository.listarTalleresSueltosPorEvento(id),
+    eventosRepository.resumenPagos(id),
+    eventosRepository.kpisFichaMedica(id),
+    eventosRepository.contarAcreditados(id), // ← nuevo
+  ]);
 
-    // Bloques con conteo de inscriptos por taller
-    const bloquesConStats = await Promise.all(
-      bloques.map(async (bloque) => ({
-        id: bloque.id,
-        nombre: bloque.nombre,
-        inicio: bloque.inicio,
-        fin: bloque.fin,
-        cantidad_elegible: bloque.cantidad_elegible,
-        es_obligatorio: bloque.es_obligatorio,
-        talleres: await Promise.all(
-          bloque.talleres.map(async (taller) => ({
-            id: taller.id,
-            nombre: taller.nombre,
-            capacidad: taller.capacidad,
-            inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
-          }))
-        ),
-      }))
-    );
+  // Bloques con conteo de inscriptos por taller
+  const bloquesConStats = await Promise.all(
+    bloques.map(async (bloque) => ({
+      id: bloque.id,
+      nombre: bloque.nombre,
+      inicio: bloque.inicio,
+      fin: bloque.fin,
+      cantidad_elegible: bloque.cantidad_elegible,
+      es_obligatorio: bloque.es_obligatorio,
+      talleres: await Promise.all(
+        bloque.talleres.map(async (taller) => ({
+          id: taller.id,
+          nombre: taller.nombre,
+          capacidad: taller.capacidad,
+          inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
+        }))
+      ),
+    }))
+  );
 
-    // Talleres sueltos con conteo
-    const talleresSueltosConStats = await Promise.all(
-      talleresSueltos.map(async (taller) => ({
-        id: taller.id,
-        nombre: taller.nombre,
-        inicio: taller.inicio,
-        fin: taller.fin,
-        capacidad: taller.capacidad,
-        es_obligatorio: taller.es_obligatorio,
-        inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
-      }))
-    );
+  // Talleres sueltos con conteo
+  const talleresSueltosConStats = await Promise.all(
+    talleresSueltos.map(async (taller) => ({
+      id: taller.id,
+      nombre: taller.nombre,
+      inicio: taller.inicio,
+      fin: taller.fin,
+      capacidad: taller.capacidad,
+      es_obligatorio: taller.es_obligatorio,
+      inscriptos: await eventosRepository.contarInscriptosPorTaller(taller.id),
+    }))
+  );
 
-    // Campos de formulario
-    const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
-    const camposFormStats = campos
-      .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
-      .map((campo) => {
-        const valores = [];
-        for (const fila of filas) {
-          const respuestas = fila.respuestas_form || {};
-          const valor = respuestas[campo.id];
-          if (valor === undefined || valor === null || valor === '') continue;
-          valores.push(valor);
+  // Campos de formulario
+  const TIPOS_CON_STATS = ['seleccion', 'booleano', 'texto', 'numero', 'fecha'];
+  const camposFormStats = campos
+    .filter((campo) => TIPOS_CON_STATS.includes(campo.tipo))
+    .map((campo) => {
+      const valores = [];
+      for (const fila of filas) {
+        const respuestas = fila.respuestas_form || {};
+        const valor = respuestas[campo.id];
+        if (valor === undefined || valor === null || valor === '') continue;
+        valores.push(valor);
+      }
+      const totalRespuestas = valores.length;
+      let stats = {};
+      switch (campo.tipo) {
+        case 'seleccion':
+        case 'booleano': {
+          const conteo = {};
+          for (const v of valores) {
+            const clave = String(v);
+            conteo[clave] = (conteo[clave] || 0) + 1;
+          }
+          stats.respuestasPopulares = Object.entries(conteo)
+            .map(([valor, cantidad]) => ({ valor, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+          break;
         }
-        const totalRespuestas = valores.length;
-        let stats = {};
-        switch (campo.tipo) {
-          case 'seleccion':
-          case 'booleano': {
-            const conteo = {};
-            for (const v of valores) {
-              const clave = String(v);
-              conteo[clave] = (conteo[clave] || 0) + 1;
-            }
-            stats.respuestasPopulares = Object.entries(conteo)
-              .map(([valor, cantidad]) => ({ valor, cantidad }))
-              .sort((a, b) => b.cantidad - a.cantidad);
-            break;
+        case 'texto': {
+          const conteo = {};
+          for (const v of valores) {
+            const clave = String(v).trim().toLowerCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            conteo[clave] = (conteo[clave] || 0) + 1;
           }
-          case 'texto': {
-            const conteo = {};
-            for (const v of valores) {
-              const clave = String(v).trim().toLowerCase()
-                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-              conteo[clave] = (conteo[clave] || 0) + 1;
-            }
-            stats.respuestasFrecuentes = Object.entries(conteo)
-              .map(([valor, cantidad]) => ({ valor, cantidad }))
-              .sort((a, b) => b.cantidad - a.cantidad);
-            break;
-          }
-          case 'numero': {
-            const nums = valores.map(Number).filter((n) => !isNaN(n));
-            if (nums.length > 0) {
-              stats.promedio = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
-              stats.minimo = Math.min(...nums);
-              stats.maximo = Math.max(...nums);
-            }
-            break;
-          }
-          case 'fecha': {
-            const fechas = valores.map((v) => new Date(v)).filter((d) => !isNaN(d));
-            if (fechas.length > 0) {
-              stats.minimo = new Date(Math.min(...fechas)).toISOString().split('T')[0];
-              stats.maximo = new Date(Math.max(...fechas)).toISOString().split('T')[0];
-            }
-            break;
-          }
+          stats.respuestasFrecuentes = Object.entries(conteo)
+            .map(([valor, cantidad]) => ({ valor, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+          break;
         }
-        return { id: campo.id, etiqueta: campo.etiqueta, tipo: campo.tipo, totalRespuestas, ...stats };
-      });
+        case 'numero': {
+          const nums = valores.map(Number).filter((n) => !isNaN(n));
+          if (nums.length > 0) {
+            stats.promedio = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
+            stats.minimo = Math.min(...nums);
+            stats.maximo = Math.max(...nums);
+          }
+          break;
+        }
+        case 'fecha': {
+          const fechas = valores.map((v) => new Date(v)).filter((d) => !isNaN(d));
+          if (fechas.length > 0) {
+            stats.minimo = new Date(Math.min(...fechas)).toISOString().split('T')[0];
+            stats.maximo = new Date(Math.max(...fechas)).toISOString().split('T')[0];
+          }
+          break;
+        }
+      }
+      return { id: campo.id, etiqueta: campo.etiqueta, tipo: campo.tipo, totalRespuestas, ...stats };
+    });
 
-    return {
-      cupoMaximo: evento.cupo_maximo,
-      totalInscriptos,
-      cantidadAcreditados,
-      bloquesTaller: bloquesConStats,
-      talleresSueltos: talleresSueltosConStats,
-      resumenPagos,
-      kpisFichaMedica: kpisFicha,
-      camposFormStats,
-    };
-  }, 900);
+  return {
+    cupoMaximo: evento.cupo_maximo,
+    totalInscriptos,
+    cantidadAcreditados,
+    bloquesTaller: bloquesConStats,
+    talleresSueltos: talleresSueltosConStats,
+    resumenPagos,
+    kpisFichaMedica: kpisFicha,
+    camposFormStats,
+  };
 }
 
 async function generarExcelInscriptos(id, orgId) {

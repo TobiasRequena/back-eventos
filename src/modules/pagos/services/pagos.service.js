@@ -19,7 +19,8 @@ async function verificarYGenerarCargo(eventoId) {
   let adminEmail = null;
   let eventoNombre = null;
   let cantidadActual = null;
-  let montoDiferencia = null;
+  let montoACobrar = null;
+  let esUrgente = false;
 
   await db.transaction(async (trx) => {
     const evento = await eventosRepository.buscarPorId(eventoId, trx);
@@ -28,118 +29,67 @@ async function verificarYGenerarCargo(eventoId) {
     cantidadActual = await participantesRepository.contarPorEvento(eventoId, trx);
     eventoNombre = evento.nombre;
 
-    const tramoActual = await pagosRepository.buscarTramoActual(cantidadActual, trx);
-    const tramoFacturado = evento.participantes_facturados > 0
-      ? await pagosRepository.buscarTramoActual(evento.participantes_facturados, trx)
-      : null;
+    // Rango actual según inscriptos
+    const rangoActual = await trx('tramo_precio_plataforma')
+      .where('participantes_desde', '<=', cantidadActual)
+      .where('activo', true)
+      .orderBy('participantes_desde', 'desc')
+      .first();
 
-    // Sin tramo todavía → no hay nada que cobrar
-    if (!tramoActual) return;
+    if (!rangoActual) return;
 
-    const mismoTramo = tramoFacturado && tramoActual.id === tramoFacturado.id;
+    const umbral90 = Math.floor(rangoActual.participantes_hasta * 0.9);
+    const limite100 = rangoActual.participantes_hasta;
 
-    // ─── MISMO TRAMO ────────────────────────────────────────────────────────
-    if (mismoTramo) {
-      const pagoPendiente = await pagosRepository.buscarPagoPendientePorEvento(eventoId, trx);
-      const pagoAprobado = !pagoPendiente || pagoPendiente.estado === 'aprobado';
-      const limiteGracia = Math.floor(tramoActual.participantes_desde * 1.10);
-      const dentroDeGracia = cantidadActual <= limiteGracia;
+    // No llegó al 90% → no hacer nada
+    if (cantidadActual < umbral90) return;
 
-      if (dentroDeGracia && pagoAprobado) {
-        // Dentro de gracia y sin deuda → todos los pendientes pasan a confirmado
-        await trx('participante')
-          .where({ evento_id: eventoId, estado_alta_plataforma: 'pendiente_pago_org' })
-          .update({ estado_alta_plataforma: 'confirmado' });
-        return;
-      }
+    // Buscar próximo rango a cobrar
+    const proximoRango = await trx('tramo_precio_plataforma')
+      .where('participantes_desde', '>', rangoActual.participantes_hasta)
+      .where('activo', true)
+      .orderBy('participantes_desde', 'asc')
+      .first();
 
-      if (!dentroDeGracia) {
-        // Fuera de gracia → marcar último participante como pendiente
-        await trx('participante')
-          .where('id', function () {
-            this.select('id')
-              .from('participante')
-              .where({ evento_id: eventoId, activo: true })
-              .orderBy('creado_en', 'desc')
-              .limit(1);
-          })
-          .update({ estado_alta_plataforma: 'pendiente_pago_org' });
+    if (!proximoRango) return; // Sin próximo rango → no hay nada que cobrar
 
-        // Solo generar nuevo pago si no hay uno pendiente ya
-        if (pagoAprobado) {
-          montoDiferencia = Math.round(
-            tramoActual.precio_por_participante * tramoActual.participantes_desde
-          );
-          if (montoDiferencia > 0) {
-            const pago = await pagosRepository.crearPago(
-              { orgId: evento.org_id, eventoId, monto: montoDiferencia },
-              trx
-            );
-            pagoId = pago.id;
-            const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
-            adminEmail = admin?.email;
-          }
-        }
+    // Verificar si ya hay un pago pendiente para este próximo rango
+    // Verificar si ya hay un pago pendiente para este próximo rango
+    const pagoPendiente = await pagosRepository.buscarPagoPendientePorEvento(eventoId, trx);
+
+    if (pagoPendiente) {
+      // Si superó el 100% y no notificamos urgente todavía → marcar y notificar
+      if (cantidadActual > limite100 && !pagoPendiente.notificado_urgente) {
+        await trx('pago')
+          .where({ id: pagoPendiente.id })
+          .update({ notificado_urgente: true });
+        esUrgente = true;
+        pagoId = pagoPendiente.id;
+        montoACobrar = Number(pagoPendiente.monto);
+        const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
+        adminEmail = admin?.email;
       }
       return;
     }
 
-    // ─── CAMBIO DE TRAMO ────────────────────────────────────────────────────
-    const limiteGraciaAnterior = tramoFacturado
-      ? Math.floor(tramoFacturado.participantes_desde * 1.10)
-      : Math.floor(tramoActual.participantes_desde * 1.10);
+    // Calcular monto: próximo rango - lo ya pagado
+    const montoYaPagado = evento.participantes_facturados > 0
+      ? await trx('tramo_precio_plataforma')
+        .where('participantes_desde', '<=', evento.participantes_facturados)
+        .where('activo', true)
+        .orderBy('participantes_desde', 'desc')
+        .first()
+        .then(r => Number(r?.monto_fijo ?? 0))
+      : 0;
 
-    const graciaAnteriorVencida = cantidadActual > limiteGraciaAnterior;
+    montoACobrar = Number(proximoRango.monto_fijo) - montoYaPagado;
+    if (montoACobrar <= 0) return;
 
-    // Si la gracia anterior no venció → actualizar tramo facturado y no cobrar
-    if (!graciaAnteriorVencida) {
-      await trx('evento')
-        .where({ id: eventoId })
-        .update({ participantes_facturados: tramoActual.participantes_desde });
-      return;
-    }
-
-    // Gracia anterior venció → marcar último participante como pendiente
-    await trx('participante')
-      .where('id', function () {
-        this.select('id')
-          .from('participante')
-          .where({ evento_id: eventoId, activo: true })
-          .orderBy('creado_en', 'desc')
-          .limit(1);
-      })
-      .update({ estado_alta_plataforma: 'pendiente_pago_org' });
-
-    // Cancelar pago pendiente anterior si existe y calcular monto consolidado
-    const pagoPendienteAnterior = await pagosRepository.buscarPagoPendientePorEvento(eventoId, trx);
-    console.log('[pagos] buscando pendiente para evento:', eventoId);
-    console.log('[pagos] encontrado:', pagoPendienteAnterior?.id, pagoPendienteAnterior?.estado);
-    if (pagoPendienteAnterior) {
-      const cancelados = await pagosRepository.cancelarPagosPendientes(eventoId, trx);
-      console.log('[pagos] pagos cancelados:', cancelados);
-
-      await pagosRepository.cancelarPagosPendientes(eventoId, trx);
-      // Monto consolidado: total del nuevo tramo (no diferencia)
-      montoDiferencia = Math.round(
-        tramoActual.precio_por_participante * tramoActual.participantes_desde
-      );
-    } else {
-      // Sin pendiente anterior: diferencia entre tramos
-      const costoNuevo = tramoActual.precio_por_participante * tramoActual.participantes_desde;
-      const costoFacturado = tramoFacturado
-        ? tramoFacturado.precio_por_participante * tramoFacturado.participantes_desde
-        : 0;
-      montoDiferencia = Math.round(costoNuevo - costoFacturado);
-    }
-
-    if (montoDiferencia <= 0) return;
-
-    await trx('evento')
-      .where({ id: eventoId })
-      .update({ participantes_facturados: tramoActual.participantes_desde });
+    // Es urgente si superó el 100%
+    esUrgente = cantidadActual > limite100;
 
     const pago = await pagosRepository.crearPago(
-      { orgId: evento.org_id, eventoId, monto: montoDiferencia },
+      { orgId: evento.org_id, eventoId, monto: montoACobrar },
       trx
     );
     pagoId = pago.id;
@@ -148,33 +98,42 @@ async function verificarYGenerarCargo(eventoId) {
     adminEmail = admin?.email;
   });
 
-  // Llamada a GalioPay FUERA de la transacción
-  if (!pagoId || !montoDiferencia) return;
+  if (!pagoId || !montoACobrar) return;
 
   try {
-    const evento = await eventosRepository.buscarPorId(eventoId);
+    let linkPago;
 
-    const paymentLink = await crearPaymentLink({
-      monto: montoDiferencia,
-      referenceId: pagoId,
-      descripcion: `Talita Encuentros — ${eventoNombre} (${cantidadActual} inscriptos)`,
-      sandbox: process.env.GALIOPAY_SANDBOX === 'true',
-    });
-
-    await pagosRepository.actualizarRefPasarela(pagoId, paymentLink.referenceId);
+    if (esUrgente) {
+      const pago = await db('pago').where({ id: pagoId }).first();
+      linkPago = pago.link_pago;
+    } else {
+      // Nuevo pago → crear link
+      const evento = await eventosRepository.buscarPorId(eventoId);
+      const paymentLink = await crearPaymentLink({
+        monto: montoACobrar,
+        referenceId: pagoId,
+        descripcion: `Talita Encuentros — ${eventoNombre} (${cantidadActual} inscriptos)`,
+        sandbox: process.env.GALIOPAY_SANDBOX === 'true',
+      });
+      await pagosRepository.actualizarRefPasarela(pagoId, paymentLink.referenceId);
+      await db('pago').where({ id: pagoId }).update({ link_pago: paymentLink.url });
+      linkPago = paymentLink.url;
+    }
 
     if (adminEmail) {
+      const evento = await eventosRepository.buscarPorId(eventoId);
       const { subject, html } = templatePagoPlataformaPendiente({
         emailAdmin: adminEmail,
         evento,
-        monto: montoDiferencia,
-        linkPago: paymentLink.url,
+        monto: montoACobrar,
+        linkPago,
         cantidadParticipantes: cantidadActual,
+        esUrgente,
       });
       enviarMail({ to: adminEmail, subject, html });
     }
   } catch (err) {
-    console.error('[pagos] Error al crear payment link en GalioPay:', err.message);
+    console.error('[pagos] Error al procesar cargo:', err.message);
   }
 }
 
@@ -185,7 +144,6 @@ async function verificarYGenerarCargo(eventoId) {
  */
 async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
   return db.transaction(async (trx) => {
-    // Buscar SIN aprobar todavía
     const pago = await trx('pago').where({ ref_pasarela: refPasarela }).first();
 
     if (!pago) {
@@ -193,7 +151,7 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
       return;
     }
 
-    // Pago cancelado → reembolso automático, no aprobar
+    // Pago cancelado → reembolso automático
     if (pago.estado === 'cancelado') {
       console.log('[webhook] Pago cancelado recibido, iniciando reembolso:', refPasarela);
       try {
@@ -215,81 +173,29 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
       return;
     }
 
-    // Pago ya aprobado → webhook duplicado, ignorar
+    // Webhook duplicado → ignorar
     if (pago.estado === 'aprobado') {
       console.log('[webhook] Webhook duplicado ignorado:', refPasarela);
       return;
     }
 
+    // Aprobar pago y actualizar participantes_facturados
     await trx('pago').where({ id: pago.id }).update({ estado: 'aprobado' });
 
+    // Actualizar participantes_facturados con la cantidad actual
+    const cantidadActual = await participantesRepository.contarPorEvento(pago.evento_id, trx);
+    await trx('evento')
+      .where({ id: pago.evento_id })
+      .update({ participantes_facturados: cantidadActual });
+
     invalidar(`evento:${pago.evento_id}`);
-    invalidar(`admin:stats:${pago.evento_id}`);
+    invalidarPorPrefijo(`admin:stats:`);
 
-    const participantesPendientes = await trx('participante')
-      .where({ evento_id: pago.evento_id, estado_alta_plataforma: 'pendiente_pago_org' })
-      .select('*');
-
-    console.log('[webhook] participantes pendientes:', participantesPendientes.length);
-
-    if (participantesPendientes.length > 0) {
-      await trx('participante')
-        .where({ evento_id: pago.evento_id, estado_alta_plataforma: 'pendiente_pago_org' })
-        .update({ estado_alta_plataforma: 'confirmado' });
-    }
-
-    // Emitir SIEMPRE — con o sin participantes pendientes
     emitirAEvento(pago.evento_id, EVENTOS_WS.PAGO_ACTUALIZADO, {
       pagoId: pago.id,
       monto: pago.monto,
       estado: 'aprobado',
-      participantesConfirmados: participantesPendientes.length,
     });
-
-    if (participantesPendientes.length === 0) return;
-
-    const evento = await eventosRepository.buscarPorId(pago.evento_id, trx);
-    const { desencriptar } = require('../../../utils/encryption');
-    const { generarCredencial } = require('../../../utils/generarCredencial');
-    const { templateConfirmacionInscripcion } = require('../../../utils/mailTemplates');
-
-    for (const participante of participantesPendientes) {
-      try {
-        let dniLegible = participante.dni;
-        try { dniLegible = desencriptar(participante.dni); } catch { }
-
-        const credencialBuffer = await generarCredencial({
-          qrPersonal: participante.qr_personal,
-          nombreEvento: evento.nombre,
-          nombreParticipante: `${participante.nombre} ${participante.apellido}`,
-          dni: dniLegible,
-        });
-
-        let grupo = null;
-        if (participanteActualizado.grupo_id) {
-          grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
-        }
-
-        const { subject, html } = templateConfirmacionInscripcion({
-          participante: { ...participanteActualizado, dni: datosParaMail.dni },
-          evento,
-          grupo,
-        });
-
-        enviarMail({
-          to: participante.email,
-          subject,
-          html,
-          attachments: [{
-            filename: `credencial_${dniLegible}.png`,
-            content: credencialBuffer,
-            contentType: 'image/png',
-          }],
-        });
-      } catch (err) {
-        console.error(`[webhook] Error al enviar mail a ${participante.email}:`, err.message);
-      }
-    }
   });
 }
 
@@ -332,6 +238,7 @@ async function reenviarMailPago(eventoId, orgId) {
   });
 
   await pagosRepository.actualizarRefPasarela(pagoPendiente.id, paymentLink.referenceId);
+  await db('pago').where({ id: pagoPendiente.id }).update({ link_pago: paymentLink.url });
 
   const { subject, html } = templatePagoPlataformaPendiente({
     emailAdmin: admin.email,
@@ -425,6 +332,7 @@ async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
   });
 
   await pagosRepository.actualizarRefPasarela(pago.id, paymentLink.referenceId);
+  await db('pago').where({ id: pago.id }).update({ link_pago: paymentLink.url });
 
   if (admin) {
     const { subject, html } = templatePagoPlataformaPendiente({
