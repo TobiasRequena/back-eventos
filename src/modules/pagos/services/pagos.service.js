@@ -36,7 +36,9 @@ async function verificarYGenerarCargo(eventoId) {
       .orderBy('participantes_desde', 'desc')
       .first();
 
-    if (!rangoActual) return;
+    if (!rangoActual || Number(rangoActual.monto_fijo) === 0) {
+      return;
+    }
 
     const umbral90 = Math.floor(rangoActual.participantes_hasta * 0.9);
     const limite100 = rangoActual.participantes_hasta;
@@ -82,8 +84,9 @@ async function verificarYGenerarCargo(eventoId) {
         .then(r => Number(r?.monto_fijo ?? 0))
       : 0;
 
-    montoACobrar = Number(proximoRango.monto_fijo) - montoYaPagado;
-    if (montoACobrar <= 0) return;
+    montoACobrar = Number(proximoRango.monto_fijo ?? 0) - Number(montoYaPagado ?? 0);
+
+    if (isNaN(montoACobrar) || montoACobrar <= 0) return;
 
     // Es urgente si superó el 100%
     esUrgente = cantidadActual > limite100;

@@ -133,7 +133,7 @@ function fichaMedicaRequerida(configFichaMedica, esMenor) {
  *    si no tiene costo, arranca en 'no_aplica'.
  */
 async function crearParticipante(orgId, datos) {
-  return db.transaction(async (trx) => {
+  const resultado = await db.transaction(async (trx) => {
     // 1. Verificar que el evento existe
     const evento = await buscarEventoCacheado(datos.eventoId, trx);
     if (!evento) {
@@ -366,13 +366,6 @@ async function crearParticipante(orgId, datos) {
       }
     }, 3000);
 
-    // fire and forget
-    setImmediate(() => {
-      verificarYGenerarCargo(datos.eventoId).catch((err) => {
-        console.error('[pagos] Error al verificar cargo:', err.message);
-      });
-    });
-
     invalidarPorPrefijo(`participantes:evento:${datos.eventoId}`);
     invalidarPorPrefijo(`evento:${datos.eventoId}`);
 
@@ -381,6 +374,15 @@ async function crearParticipante(orgId, datos) {
       tiene_ficha_medica: !!datos.fichaMedica,
     }, 'admin');
   });
+
+  // fire and forget FUERA de la transacción
+  setImmediate(() => {
+    verificarYGenerarCargo(datos.eventoId).catch((err) => {
+      console.error('[pagos] Error al verificar cargo:', err.message);
+    });
+  });
+
+  return resultado;
 }
 
 /**
