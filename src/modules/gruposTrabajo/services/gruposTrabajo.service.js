@@ -522,10 +522,11 @@ async function generar(eventoId, esquemaId, orgId) {
       }
 
       // Distribuir individuales secuencialmente
-      individuales.forEach((p, i) => {
-        buckets[i % cantGrupos].push(p);
-        tamanosBuckets[i % cantGrupos]++;
-      });
+      for (const p of individuales) {
+        const minIdx = tamanosBuckets.indexOf(Math.min(...tamanosBuckets));
+        buckets[minIdx].push(p);
+        tamanosBuckets[minIdx]++;
+      }
 
       // Crear grupos
       buckets.forEach((integrantes, idx) => {
