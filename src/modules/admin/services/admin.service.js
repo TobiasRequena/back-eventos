@@ -55,21 +55,17 @@ async function obtenerStats(desde, hasta) {
     adminRepository.statsRevenue(desdeAnterior, hastaAnterior),
     adminRepository.statsEventos(desdeAnterior, hastaAnterior),
   ]);
-
   return {
     usuarios: {
       total: usuarios.total,
       nuevos: usuarios.nuevos,
-      variacion: calcularVariacion(usuarios.total, usuariosAnt.total),
+      variacion: calcularVariacion(usuarios.nuevos, usuariosAnt.nuevos),
       evolucion: rellenarDias(usuarios.porDia, desde, hasta),
     },
     organizaciones: {
       total: organizaciones.total,
       nuevos: organizaciones.nuevos,
-      variacion: calcularVariacion(
-        organizaciones.total,
-        organizacionesAnt.total
-      ),
+      variacion: calcularVariacion(organizaciones.nuevos, organizacionesAnt.nuevos),
       evolucion: rellenarDias(organizaciones.porDia, desde, hasta),
     },
     eventos: {
