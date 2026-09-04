@@ -9,33 +9,33 @@ function sanitizarParticipante(participante, contexto = 'admin') {
   if (contexto === 'admin') {
     let dniLegible = participante.dni;
     try { dniLegible = desencriptar(participante.dni); } catch { }
+
+    const {
+      dni_hash,
+      grupo_nombre,
+      acreditador_nombre,
+      acreditador_apellido,
+      acreditado_en,
+      ...resto
+    } = participante;
+
     return {
-      ...participante,
+      ...resto,
       dni: dniLegible,
-      dni_hash: undefined,
       edad: calcularEdad(participante.nacimiento),
       tiene_ficha_medica: tieneFicha,
       tiene_autorizacion: tieneAuto,
       tiene_certificado: tieneCert,
+      acreditado: participante.acreditado ?? false,
+      acreditado_en: participante.acreditado_en ?? null,
+      acreditador: participante.acreditador_nombre
+        ? { nombre: participante.acreditador_nombre, apellido: participante.acreditador_apellido }
+        : participante.acreditador ?? null,
+      grupo: participante.grupo_nombre
+        ? { id: participante.grupo_id, nombre: participante.grupo_nombre }
+        : participante.grupo ?? null,
     };
   }
-
-  return {
-    id: participante.id,
-    nombre: participante.nombre,
-    apellido: participante.apellido,
-    nacimiento: participante.nacimiento,
-    edad: calcularEdad(participante.nacimiento),
-    estado_pago: participante.estado_pago,
-    estado_vinculo: participante.estado_vinculo,
-    rol_grupo: participante.rol_grupo,
-    grupo_id: participante.grupo_id,
-    tiene_ficha_medica: tieneFicha,
-    tiene_autorizacion: tieneAuto,
-    tiene_certificado: tieneCert,
-    autorizacion_url: participante.autorizacion_url,
-    certificado_url: participante.certificado_url,
-  };
 }
 
 module.exports = sanitizarParticipante;

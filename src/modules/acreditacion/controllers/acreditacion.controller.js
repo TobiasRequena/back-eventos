@@ -58,4 +58,12 @@ async function acreditarGrupal(req, res, next) {
   }
 }
 
-module.exports = { crearSesion, escanearQr, acreditarIndividual, acreditarGrupal };
+async function listarAcreditadores(req, res, next) {
+  try {
+    const { eventoId } = req.query;
+    const acreditadores = await acreditacionService.listarAcreditadores(eventoId, req.orgId);
+    res.status(200).json({ acreditadores });
+  } catch (error) { next(error); }
+}
+
+module.exports = { crearSesion, escanearQr, acreditarIndividual, acreditarGrupal, listarAcreditadores };

@@ -15,12 +15,20 @@ async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
 async function buscarPorId(id, trx = db) {
   return trx('participante')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
+    .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
     .where('participante.id', id)
     .select(
       'participante.*',
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
-      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado'),
+      db.raw('(checkin.id IS NOT NULL) as acreditado'),
+      'checkin.momento as acreditado_en',
+      'acreditador_sesion.nombre as acreditador_nombre',
+      'acreditador_sesion.apellido as acreditador_apellido',
+      'grupo.nombre as grupo_nombre',
     )
     .first();
 }
@@ -40,9 +48,10 @@ async function listarPorEvento(eventoId, filtros = {}) {
   const query = db('participante')
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
+    .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
     .where('participante.evento_id', eventoId)
-    .where('participante.activo', true) // ← solo activos por defecto
+    .where('participante.activo', true)
     .select(
       'participante.*',
       db.raw(`
@@ -51,6 +60,12 @@ async function listarPorEvento(eventoId, filtros = {}) {
         ELSE NULL END as grupo
       `),
       db.raw('(checkin.id IS NOT NULL) as acreditado'),
+      'checkin.momento as acreditado_en',
+      db.raw(`
+        CASE WHEN checkin.id IS NOT NULL
+        THEN json_build_object('nombre', acreditador_sesion.nombre, 'apellido', acreditador_sesion.apellido)
+        ELSE NULL END as acreditador
+      `),
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
       db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')

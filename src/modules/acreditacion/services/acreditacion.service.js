@@ -290,9 +290,14 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
   });
 }
 
+async function listarAcreditadores(eventoId, orgId) {
+  return acreditacionRepository.listarAcreditadores(eventoId, orgId);
+}
+
 module.exports = {
   crearSesion,
   escanearQr,
   acreditarIndividual,
   acreditarGrupal,
+  listarAcreditadores
 };

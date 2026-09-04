@@ -33,6 +33,7 @@ const {
   routerPublico: acreditacionPublico,
   routerProtegido: acreditacionProtegido,
   routerAcciones: acreditacionAcciones,
+  routerAdmin: acreditacionAdmin
 } = require('./modules/acreditacion/routes/acreditacion.routes');
 const routerPagos = require('./modules/pagos/routes/pagos.routes');
 const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
@@ -111,6 +112,7 @@ app.use('/api/v1/eventos', routerFormularios);
 // Acreditación
 app.use('/api/v1/acreditacion', acreditacionPublico);
 app.use('/api/v1/acreditacion', acreditacionAcciones);
+app.use('/api/v1/acreditacion', acreditacionAdmin);
 
 // Pagos
 app.use('/api/v1/pagos', routerPagos);

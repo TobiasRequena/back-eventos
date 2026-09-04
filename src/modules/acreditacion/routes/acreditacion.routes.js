@@ -12,8 +12,6 @@ const {
 const verificarPagoEvento = require('../../../middlewares/verificarPagoEvento');
 const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
-
-
 // Router público — escanear QR no requiere auth (lo usa el acreditador en el celular)
 const routerPublico = express.Router();
 routerPublico.use(verificarPagoPendiente);
@@ -27,4 +25,9 @@ routerAcciones.use(verificarPagoPendiente);
 routerAcciones.post('/individual', acreditacionController.acreditarIndividual);
 routerAcciones.post('/grupal', validate(checkinGrupalSchema), acreditacionController.acreditarGrupal);
 
-module.exports = { routerPublico, routerAcciones };
+const routerAdmin = express.Router();
+routerAdmin.use(autenticar);
+routerAdmin.use(resolverOrganizacionActiva);
+routerAdmin.get('/acreditadores', acreditacionController.listarAcreditadores);
+
+module.exports = { routerPublico, routerAcciones, routerAdmin };

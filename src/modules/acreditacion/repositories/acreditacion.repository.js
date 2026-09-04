@@ -57,10 +57,18 @@ async function contarAcreditadosPorEvento(eventoId, trx = db) {
   return Number(count);
 }
 
+async function listarAcreditadores(eventoId, orgId) {
+  return db('acreditador_sesion')
+    .where({ evento_id: eventoId, org_id: orgId })
+    .select('id', 'nombre', 'apellido')
+    .orderBy('nombre', 'asc');
+}
+
 module.exports = {
   crearSesion,
   buscarSesionPorId,
   crearCheckin,
   buscarCheckinPorParticipante,
   contarAcreditadosPorEvento,
+  listarAcreditadores
 };
