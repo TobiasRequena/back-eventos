@@ -210,6 +210,7 @@ async function obtenerEsquema(eventoId, esquemaId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
   const tandas = await repo.listarTandasPorEsquema(esquemaId);
+  const excluidos = await repo.listarExcluidosAdmin(esquemaId);
 
   // Contar participantes fuera del esquema solo si ya fue generado
   let nuevosNoContemplados = 0;
@@ -234,7 +235,7 @@ async function obtenerEsquema(eventoId, esquemaId, orgId) {
     nuevosNoContemplados = universo.filter(p => !idsContemplados.has(p.id)).length;
   }
 
-  return { ...esquema, tandas, nuevosNoContemplados };
+  return { ...esquema, tandas, excluidos, nuevosNoContemplados };
 }
 
 async function editarEsquema(eventoId, esquemaId, orgId, datos) {
