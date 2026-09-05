@@ -23,6 +23,8 @@ async function obtenerDestinatarios(eventoId, destinatarios, filtros) {
 
   if (destinatarios === 'acreditados') {
     query = query.join('checkin', 'checkin.participante_id', 'participante.id');
+  } else if (destinatarios === 'referentes') {
+    query = query.where({ 'participante.rol_grupo': 'responsable' });
   }
 
   const participantes = await query;
@@ -34,6 +36,15 @@ async function obtenerDestinatarios(eventoId, destinatarios, filtros) {
     const respuestas = p.respuestas_form ?? {};
     return filtros.every(f => respuestas[f.campo_form_id] === f.valor);
   });
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function templateComunicacion({ nombreEvento, asunto, mensaje }) {
@@ -63,6 +74,12 @@ function templateComunicacion({ nombreEvento, asunto, mensaje }) {
 
 async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = []) {
   const evento = await verificarEventoDeLaOrg(eventoId, orgId);
+
+  if (datos.destinatarios === 'referentes' && !evento.tiene_grupos) {
+    const error = new Error('Este evento no tiene grupos habilitados');
+    error.status = 400;
+    throw error;
+  }
 
   // Subir adjuntos a R2
   const adjuntosGuardados = [];
@@ -103,8 +120,8 @@ async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = 
     let errores = 0;
     const html = templateComunicacion({
       nombreEvento: evento.nombre,
-      asunto: datos.asunto,
-      mensaje: datos.mensaje,
+      asunto: escapeHtml(datos.asunto),
+      mensaje: escapeHtml(datos.mensaje),
     });
 
     const attachments = adjuntosGuardados.map(a => ({
@@ -128,9 +145,15 @@ async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = 
       }
     }
 
+    const estado = destinatarios.length === 0
+      ? 'enviado'
+      : errores === destinatarios.length
+        ? 'error'
+        : 'enviado';
+
     await comunicacionesRepository.actualizar(comunicacion.id, {
       total_enviados: enviados,
-      estado: errores === 0 ? 'enviado' : errores === destinatarios.length ? 'error' : 'enviado',
+      estado,
     });
   });
 

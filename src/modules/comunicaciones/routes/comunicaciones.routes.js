@@ -1,8 +1,7 @@
 const express = require('express');
-const multer = require('multer');
 const router = express.Router({ mergeParams: true });
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = require('../../../middlewares/upload');
 const comunicacionesController = require('../controllers/comunicaciones.controller');
 const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');

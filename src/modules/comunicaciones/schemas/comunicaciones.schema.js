@@ -7,7 +7,7 @@ const enviarComunicacionSchema = z.object({
   body: z.object({
     asunto: z.string().min(1).max(200),
     mensaje: z.string().min(1),
-    destinatarios: z.enum(['inscriptos', 'acreditados']),
+    destinatarios: z.enum(['inscriptos', 'acreditados', 'referentes']),
     filtros: z.array(z.object({
       campo_form_id: z.string().uuid(),
       valor: z.string(),
