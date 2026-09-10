@@ -73,4 +73,31 @@ async function resetContrasena(req, res, next) {
   }
 }
 
-module.exports = { register, login, me, recuperarContrasena, resetContrasena };
+async function verificarEmail(req, res, next) {
+  try {
+    await authService.verificarEmail(req.body.email, req.body.codigo);
+    res.status(200).json({ mensaje: 'Email verificado correctamente.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function reenviarVerificacion(req, res, next) {
+  try {
+    await authService.reenviarVerificacionEmail(req.body.email);
+    // Respuesta genérica siempre — no revelar si el email existe o ya está verificado
+    res.status(200).json({ mensaje: 'Si el email existe y no fue verificado, recibirás un nuevo código.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  register,
+  login,
+  me,
+  recuperarContrasena,
+  resetContrasena,
+  verificarEmail,
+  reenviarVerificacion,
+};

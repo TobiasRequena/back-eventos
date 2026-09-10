@@ -365,6 +365,42 @@ function templateRecuperarContrasena({ nombre, codigo }) {
   };
 }
 
+function templateVerificarEmail({ nombre, codigo }) {
+  return {
+    subject: 'Verificá tu email — Talita Encuentros',
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Verificá tu email
+        </h1>
+
+        <p>Hola <strong>${nombre}</strong>,</p>
+        <p>Tu código de verificación es:</p>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <span style="font-size: 42px; font-weight: bold; letter-spacing: 8px; color: #1E3A5F;">
+            ${codigo}
+          </span>
+        </div>
+
+        <p style="color: #6b7280; font-size: 13px;">
+          Este código expira en <strong>15 minutos</strong>. Si no creaste una cuenta en Talita Encuentros, ignorá este mail.
+        </p>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+
+      </body>
+      </html>
+    `,
+  };
+}
+
 function templatePagoRechazado({ participante, evento }) {
   return {
     subject: `Pago rechazado — ${evento.nombre}`,
@@ -399,5 +435,6 @@ module.exports = {
   templatePagoPlataformaPendiente,
   templateAsignacionGrupo,
   templateRecuperarContrasena,
+  templateVerificarEmail,
   templatePagoRechazado
 };

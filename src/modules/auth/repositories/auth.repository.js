@@ -35,6 +35,7 @@ async function crearUsuario({ nombre, apellido, email, contrasenaHash }, trx = d
             contrasena_hash: contrasenaHash,
             es_super_admin: false, // por defecto, nadie nace super_admin
             activo: true,
+            email_verificado: false,
         })
         .returning('*'); // PostgreSQL soporta RETURNING, así evitamos un segundo SELECT
 

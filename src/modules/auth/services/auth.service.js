@@ -4,7 +4,7 @@ const { db } = require('../../../config/db');
 const authRepository = require('../repositories/auth.repository');
 const crypto = require('crypto');
 const { enviarMail } = require('../../../utils/mail');
-const { templateRecuperarContrasena } = require('../../../utils/mailTemplates');
+const { templateRecuperarContrasena, templateVerificarEmail } = require('../../../utils/mailTemplates');
 
 const SALT_ROUNDS = 10; // costo del hash — 10 es un estándar razonable, ni muy lento ni inseguro
 
@@ -60,7 +60,7 @@ async function registrar({ nombre, apellido, email, contrasena, organizacion }) 
   const esImplicita = !organizacion;
   const nombreOrganizacion = organizacion?.nombre ?? `Organización de ${nombre}`;
 
-  // 4. Transacción: usuario + organización + vínculo, todo o nada.
+  // 4. Transacción: usuario + organización + vínculo + OTP de verificación, todo o nada.
   const resultado = await db.transaction(async (trx) => {
     const usuario = await authRepository.crearUsuario(
       { nombre, apellido, email, contrasenaHash },
@@ -77,12 +77,23 @@ async function registrar({ nombre, apellido, email, contrasena, organizacion }) 
       trx
     );
 
-    return { usuario, organizacion: org };
+    const codigoVerificacion = await crearOtpVerificacion(usuario.id, trx);
+
+    return { usuario, organizacion: org, codigoVerificacion };
   });
 
-  // 5. Generar el token ya con el usuario recién creado, para que el front
+  // 5. Enviar el mail de verificación recién después de que la transacción
+  //    cerró (no tiene sentido tener la conexión ocupada esperando la red).
+  const { subject, html } = templateVerificarEmail({
+    nombre: resultado.usuario.nombre,
+    codigo: resultado.codigoVerificacion,
+  });
+  enviarMail({ to: resultado.usuario.email, subject, html });
+
+  // 6. Generar el token ya con el usuario recién creado, para que el front
   //    pueda loguear automáticamente después de registrarse (sin pedir
-  //    que el usuario haga login de nuevo).
+  //    que el usuario haga login de nuevo). El usuario queda con acceso,
+  //    pero con email_verificado:false hasta que confirme el código.
   const token = generarToken(resultado.usuario);
 
   return {
@@ -110,6 +121,11 @@ async function iniciarSesion({ email, contrasena }) {
   if (!usuario) credencialesInvalidas();
   if (!usuario.activo) {
     const error = new Error('Esta cuenta está desactivada');
+    error.status = 403;
+    throw error;
+  }
+  if (!usuario.email_verificado) {
+    const error = new Error('Debés verificar tu email antes de iniciar sesión');
     error.status = 403;
     throw error;
   }
@@ -203,4 +219,79 @@ async function resetContrasena(email, codigo, nuevaContrasena) {
   });
 }
 
-module.exports = { registrar, iniciarSesion, obtenerPerfil, solicitarRecuperacion, resetContrasena };
+/**
+ * Genera un OTP de 6 dígitos para verificar el email de `usuarioId`,
+ * invalidando cualquier código anterior sin usar. Devuelve el código
+ * (quien llama decide cuándo/cómo mandarlo por mail).
+ */
+async function crearOtpVerificacion(usuarioId, trx = db) {
+  await trx('verificacion_email_token')
+    .where({ usuario_id: usuarioId, usado: false })
+    .update({ usado: true });
+
+  const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiraEn = new Date();
+  expiraEn.setMinutes(expiraEn.getMinutes() + 15);
+
+  await trx('verificacion_email_token').insert({
+    usuario_id: usuarioId,
+    token: codigo,
+    expira_en: expiraEn,
+  });
+
+  return codigo;
+}
+
+/**
+ * Reenvía el código de verificación (ej. si el usuario dejó que expire).
+ * Respuesta genérica en el controller — acá no distinguimos entre
+ * "no existe" y "ya está verificado" para no filtrar información.
+ */
+async function reenviarVerificacionEmail(email) {
+  const usuario = await db('usuario').where({ email }).first();
+  if (!usuario || usuario.email_verificado) return;
+
+  const codigo = await crearOtpVerificacion(usuario.id);
+
+  const { subject, html } = templateVerificarEmail({ nombre: usuario.nombre, codigo });
+  enviarMail({ to: email, subject, html });
+}
+
+/**
+ * Confirma el OTP y marca el usuario como verificado.
+ */
+async function verificarEmail(email, codigo) {
+  const usuario = await db('usuario').where({ email }).first();
+  if (!usuario) {
+    const error = new Error('Código inválido'); error.status = 400; throw error;
+  }
+
+  if (usuario.email_verificado) return; // idempotente: ya estaba verificado
+
+  const registro = await db('verificacion_email_token')
+    .where({ usuario_id: usuario.id, token: codigo, usado: false })
+    .first();
+
+  if (!registro) {
+    const error = new Error('Código inválido o ya utilizado'); error.status = 400; throw error;
+  }
+
+  if (new Date() > new Date(registro.expira_en)) {
+    const error = new Error('El código expiró. Solicitá uno nuevo.'); error.status = 400; throw error;
+  }
+
+  await db.transaction(async (trx) => {
+    await trx('usuario').where({ id: usuario.id }).update({ email_verificado: true });
+    await trx('verificacion_email_token').where({ id: registro.id }).update({ usado: true });
+  });
+}
+
+module.exports = {
+  registrar,
+  iniciarSesion,
+  obtenerPerfil,
+  solicitarRecuperacion,
+  resetContrasena,
+  verificarEmail,
+  reenviarVerificacionEmail,
+};

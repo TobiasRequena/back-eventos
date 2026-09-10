@@ -35,4 +35,24 @@ const resetContrasenaSchema = z.object({
     }),
 });
 
-module.exports = { registerSchema, loginSchema, recuperarContrasenaSchema, resetContrasenaSchema };
+const verificarEmailSchema = z.object({
+    body: z.object({
+        email: z.string().email('Email inválido'),
+        codigo: z.string().length(6, 'El código debe tener 6 dígitos'),
+    }),
+});
+
+const reenviarVerificacionSchema = z.object({
+    body: z.object({
+        email: z.string().email('Email inválido'),
+    }),
+});
+
+module.exports = {
+    registerSchema,
+    loginSchema,
+    recuperarContrasenaSchema,
+    resetContrasenaSchema,
+    verificarEmailSchema,
+    reenviarVerificacionSchema,
+};
