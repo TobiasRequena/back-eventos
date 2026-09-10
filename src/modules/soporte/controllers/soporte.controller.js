@@ -7,6 +7,7 @@ async function contacto(req, res, next) {
 
     await enviarMail({
       to: process.env.SUPERADMIN_EMAIL,
+      from: `Talita Encuentro <soporte@notificaciones.talitaencuentro.com>`,
       subject: `[Soporte] ${asunto}`,
       html: `
         <h2>Nueva consulta de soporte</h2>
