@@ -245,19 +245,24 @@ async function crearParticipante(orgId, datos) {
           org_id: orgIdFinal,
           evento_id: datos.eventoId,
           participante_id: participante.id,
-          obra_social: datos.fichaMedica.obra_social ?? null,
+          obra_social: datos.fichaMedica.obra_social || null,
           tipo_sangre: datos.fichaMedica.tipo_sangre || null,
           tiene_diabetes: datos.fichaMedica.tiene_diabetes ?? false,
           tiene_asma: datos.fichaMedica.tiene_asma ?? false,
           tiene_epilepsia: datos.fichaMedica.tiene_epilepsia ?? false,
           tiene_cardiopatia: datos.fichaMedica.tiene_cardiopatia ?? false,
-          otras_condiciones: datos.fichaMedica.otras_condiciones ?? null,
-          alergias: datos.fichaMedica.alergias ?? null,
-          restricciones_alimentarias: datos.fichaMedica.restricciones_alimentarias ?? null,
+          // "" (campo vacío) tiene que guardarse como NULL — las stats y el listado
+          // de fichas relevantes filtran con IS NOT NULL, y un "" ahí cuenta como
+          // que el participante SÍ tiene la condición/dato cargado.
+          otras_condiciones: datos.fichaMedica.otras_condiciones || null,
+          alergias: datos.fichaMedica.alergias || null,
+          restricciones_alimentarias: datos.fichaMedica.restricciones_alimentarias || null,
           medicacion: datos.fichaMedica.medicacion ? JSON.stringify(datos.fichaMedica.medicacion) : null,
           tiene_discapacidad: datos.fichaMedica.tiene_discapacidad ?? false,
-          adaptaciones: datos.fichaMedica.adaptaciones ? JSON.stringify(datos.fichaMedica.adaptaciones) : null,
-          recomendaciones: datos.fichaMedica.recomendaciones ?? null,
+          adaptaciones: datos.fichaMedica.tiene_discapacidad && datos.fichaMedica.adaptaciones
+            ? JSON.stringify(datos.fichaMedica.adaptaciones)
+            : null,
+          recomendaciones: datos.fichaMedica.recomendaciones || null,
         }, trx);
         console.log('[ficha] creada OK');
       } catch (err) {

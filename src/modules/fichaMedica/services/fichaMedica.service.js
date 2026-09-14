@@ -35,7 +35,9 @@ async function guardarFicha(participanteId, orgId, datos) {
     restricciones_alimentarias: datos.restricciones_alimentarias || null,
     medicacion: datos.medicacion ? JSON.stringify(datos.medicacion) : null,
     tiene_discapacidad: datos.tiene_discapacidad ?? false,
-    adaptaciones: datos.adaptaciones ? JSON.stringify(datos.adaptaciones) : null,
+    adaptaciones: datos.tiene_discapacidad && datos.adaptaciones
+      ? JSON.stringify(datos.adaptaciones)
+      : null,
     recomendaciones: datos.recomendaciones || null,
   });
 
