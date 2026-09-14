@@ -20,7 +20,7 @@ module.exports = {
     seeds: {
       directory: './src/database/seeds',
     },
-    pool: { min: 2, max: 10 },
+    pool: { min: 2, max: 10, acquireTimeoutMillis: 10000 },
   },
 
   production: {
@@ -40,6 +40,6 @@ module.exports = {
     seeds: {
       directory: './src/database/seeds',
     },
-    pool: { min: 2, max: 10 },
+    pool: { min: 2, max: 25, acquireTimeoutMillis: 10000 },
   },
 };

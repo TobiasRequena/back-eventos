@@ -26,8 +26,17 @@ const checkinGrupalSchema = z.object({
   }),
 });
 
+const acreditarIndividualSchema = z.object({
+  body: z.object({
+    participanteId: z.string().uuid('participanteId inválido'),
+    acreditadorId: z.string().uuid('acreditadorId inválido'),
+    puntoAccesoId: z.string().uuid().nullish(),
+  }),
+});
+
 module.exports = {
   crearSesionSchema,
   escanearQrSchema,
   checkinGrupalSchema,
+  acreditarIndividualSchema,
 };

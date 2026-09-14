@@ -183,6 +183,15 @@ async function buscarPorQr(qrPersonal, trx = db) {
   return trx('participante').where({ qr_personal: qrPersonal }).first();
 }
 
+/**
+ * Trae varios participantes por id de una sola vez — usado en la
+ * acreditación grupal para no hacer un buscarPorId por integrante.
+ */
+async function buscarPorIds(ids, trx = db) {
+  if (ids.length === 0) return [];
+  return trx('participante').whereIn('id', ids);
+}
+
 async function buscarPorDniYEvento(dni, eventoId) {
   const hash = hashDni(dni);
   return db('participante')
@@ -194,6 +203,7 @@ async function buscarPorDniYEvento(dni, eventoId) {
 module.exports = {
   buscarPorDniEnEvento,
   buscarPorId,
+  buscarPorIds,
   listarPorEvento,
   contarPorEvento,
   crear,

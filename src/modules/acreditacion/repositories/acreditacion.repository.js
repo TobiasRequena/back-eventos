@@ -27,16 +27,25 @@ async function buscarSesionPorId(id, trx = db) {
  * PostgreSQL tira un error 23505 que capturamos en el service.
  */
 async function crearCheckin(datos, trx = db) {
-  const [checkin] = await trx('checkin')
-    .insert({
-      org_id: datos.orgId,
-      participante_id: datos.participanteId,
-      acreditador_id: datos.acreditadorId,
-      punto_acceso_id: datos.puntoAccesoId ?? null,
-      momento: new Date(),
-    })
-    .returning('*');
-  return checkin;
+  try {
+    const [checkin] = await trx('checkin')
+      .insert({
+        org_id: datos.orgId,
+        participante_id: datos.participanteId,
+        acreditador_id: datos.acreditadorId,
+        punto_acceso_id: datos.puntoAccesoId ?? null,
+        momento: new Date(),
+      })
+      .returning('*');
+    return checkin;
+  } catch (err) {
+    if (err.code === '23505') {
+      const error = new Error('Este participante ya fue acreditado');
+      error.status = 409;
+      throw error;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -44,6 +53,46 @@ async function crearCheckin(datos, trx = db) {
  */
 async function buscarCheckinPorParticipante(participanteId, trx = db) {
   return trx('checkin').where({ participante_id: participanteId }).first();
+}
+
+/**
+ * Igual que buscarCheckinPorParticipante pero para varios participantes
+ * de una sola vez (evita el N+1 al resolver un grupo entero).
+ * Devuelve el set de participante_id que ya tienen checkin.
+ */
+async function buscarCheckinsPorParticipantes(participanteIds, trx = db) {
+  if (participanteIds.length === 0) return new Set();
+  const checkins = await trx('checkin')
+    .whereIn('participante_id', participanteIds)
+    .select('participante_id');
+  return new Set(checkins.map((c) => c.participante_id));
+}
+
+/**
+ * Inserta varios checkins de una — usado en la acreditación grupal para
+ * no hacer un INSERT por participante. Misma protección de UNIQUE que
+ * crearCheckin: si alguno ya existe, PostgreSQL tira 23505.
+ */
+async function crearCheckins(rows, trx = db) {
+  if (rows.length === 0) return [];
+  try {
+    return await trx('checkin')
+      .insert(rows.map((datos) => ({
+        org_id: datos.orgId,
+        participante_id: datos.participanteId,
+        acreditador_id: datos.acreditadorId,
+        punto_acceso_id: datos.puntoAccesoId ?? null,
+        momento: new Date(),
+      })))
+      .returning('*');
+  } catch (err) {
+    if (err.code === '23505') {
+      const error = new Error('Uno o más participantes ya fueron acreditados');
+      error.status = 409;
+      throw error;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -68,7 +117,9 @@ module.exports = {
   crearSesion,
   buscarSesionPorId,
   crearCheckin,
+  crearCheckins,
   buscarCheckinPorParticipante,
+  buscarCheckinsPorParticipantes,
   contarAcreditadosPorEvento,
   listarAcreditadores
 };

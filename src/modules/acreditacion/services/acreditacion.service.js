@@ -73,22 +73,23 @@ async function escanearQr(qrPersonal, eventoId) {
     const integrantes = await gruposRepository.listarIntegrantes(participante.grupo_id);
     const solicitudes = await gruposRepository.listarSolicitudes(participante.grupo_id);
 
-    const integrantesConEstado = await Promise.all(
-      integrantes.map(async (i) => {
-        const checkin = await acreditacionRepository.buscarCheckinPorParticipante(i.id);
-        let dniIntegrante = i.dni;
-        try { dniIntegrante = desencriptar(i.dni); } catch { }
-        return {
-          id: i.id,
-          nombre: i.nombre,
-          apellido: i.apellido,
-          dni: dniIntegrante,
-          es_mayor: i.es_mayor,
-          estado_pago: i.estado_pago,
-          acreditado: !!checkin,
-        };
-      })
+    const acreditadosIds = await acreditacionRepository.buscarCheckinsPorParticipantes(
+      integrantes.map((i) => i.id)
     );
+
+    const integrantesConEstado = integrantes.map((i) => {
+      let dniIntegrante = i.dni;
+      try { dniIntegrante = desencriptar(i.dni); } catch { }
+      return {
+        id: i.id,
+        nombre: i.nombre,
+        apellido: i.apellido,
+        dni: dniIntegrante,
+        es_mayor: i.es_mayor,
+        estado_pago: i.estado_pago,
+        acreditado: acreditadosIds.has(i.id),
+      };
+    });
 
     grupo = {
       id: grupoData.id,
@@ -227,19 +228,23 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
       throw error;
     }
 
+    const participantes = await participantesRepository.buscarPorIds(participanteIds, trx);
+    const participantesPorId = new Map(participantes.map((p) => [p.id, p]));
+    const acreditadosIds = await acreditacionRepository.buscarCheckinsPorParticipantes(
+      participanteIds,
+      trx
+    );
+
     const resultados = [];
+    const aAcreditar = [];
+    const enColaEnEsteLote = new Set();
 
     for (const participanteId of participanteIds) {
-      const participante = await participantesRepository.buscarPorId(participanteId, trx);
+      const participante = participantesPorId.get(participanteId);
       if (!participante) {
         resultados.push({ participanteId, resultado: 'no_encontrado' });
         continue;
       }
-
-      const yaAcreditado = await acreditacionRepository.buscarCheckinPorParticipante(
-        participanteId,
-        trx
-      );
 
       const participanteData = {
         id: participante.id,
@@ -252,7 +257,9 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
         grupo_id: participante.grupo_id,
       };
 
-      if (yaAcreditado) {
+      // Ya acreditado antes de este request, o ya encolado en este mismo
+      // lote (participanteIds venía con el mismo id repetido)
+      if (acreditadosIds.has(participanteId) || enColaEnEsteLote.has(participanteId)) {
         resultados.push({
           participanteId,
           resultado: 'ya_acreditado',
@@ -261,18 +268,24 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
         continue;
       }
 
-      const checkin = await acreditacionRepository.crearCheckin(
-        { orgId: orgIdFinal, participanteId, acreditadorId, puntoAccesoId },
-        trx
-      );
-
-      resultados.push({
-        participanteId,
-        resultado: 'acreditado',
-        checkin,
-        participante: participanteData,
-      });
+      enColaEnEsteLote.add(participanteId);
+      aAcreditar.push({ participanteId, participanteData });
+      resultados.push({ participanteId, resultado: 'acreditado', participante: participanteData });
     }
+
+    const checkinsCreados = await acreditacionRepository.crearCheckins(
+      aAcreditar.map(({ participanteId }) => (
+        { orgId: orgIdFinal, participanteId, acreditadorId, puntoAccesoId }
+      )),
+      trx
+    );
+
+    // El INSERT en batch devuelve las filas en el mismo orden en que se insertaron
+    checkinsCreados.forEach((checkin, idx) => {
+      const { participanteId } = aAcreditar[idx];
+      const entrada = resultados.find((r) => r.participanteId === participanteId);
+      entrada.checkin = checkin;
+    });
 
     const total = await acreditacionRepository.contarAcreditadosPorEvento(eventoId, trx);
     const acreditadosData = resultados
