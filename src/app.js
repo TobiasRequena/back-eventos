@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const errorHandler = require('./middlewares/errorHandler');
+const { limiterGlobal } = require('./middlewares/rateLimit');
 
 const {
   routerBloquesAnidado,
@@ -68,6 +69,7 @@ app.use(
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(limiterGlobal);
 
 // Healthcheck — útil para verificar que el server y Railway responden
 app.get('/api/v1/health', (req, res) => {

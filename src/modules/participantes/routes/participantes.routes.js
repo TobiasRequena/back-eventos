@@ -10,6 +10,7 @@ const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const autenticarAdminOReferente = require('../../../middlewares/autenticarAdminOReferente');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
+const { limiterPublico } = require('../../../middlewares/rateLimit');
 const {
   crearParticipanteSchema,
   editarParticipanteSchema,
@@ -31,10 +32,10 @@ routerAnidado.get('/:eventoId/participantes', verificarPagoPendiente, participan
 
 // Router público: inscripción externa y subida de documentación post-inscripción (sin auth obligatoria)
 const routerPublico = express.Router();
-routerPublico.post('/', verificarPagoPendiente, validate(crearParticipanteSchema), participantesController.crear);
-routerPublico.get('/verificar-dni', participantesController.verificarDni);
-routerPublico.patch('/:id/autorizacion', upload.single('archivo'), participantesController.subirAutorizacion);
-routerPublico.patch('/:id/certificado', upload.single('archivo'), participantesController.subirCertificado);
+routerPublico.post('/', limiterPublico, verificarPagoPendiente, validate(crearParticipanteSchema), participantesController.crear);
+routerPublico.get('/verificar-dni', limiterPublico, participantesController.verificarDni);
+routerPublico.patch('/:id/autorizacion', limiterPublico, upload.single('archivo'), participantesController.subirAutorizacion);
+routerPublico.patch('/:id/certificado', limiterPublico, upload.single('archivo'), participantesController.subirCertificado);
 
 // Router mixto: acepta admin (con X-Org-Id) O referente (sin X-Org-Id)
 const routerMixto = express.Router();

@@ -4,6 +4,7 @@ const acreditacionController = require('../controllers/acreditacion.controller')
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
+const { limiterPublico } = require('../../../middlewares/rateLimit');
 const {
   crearSesionSchema,
   escanearQrSchema,
@@ -15,14 +16,14 @@ const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendie
 
 // Router público — escanear QR no requiere auth (lo usa el acreditador en el celular)
 const routerPublico = express.Router();
-routerPublico.get('/escanear', acreditacionController.escanearQr);
-routerPublico.post('/sesion', verificarPagoPendiente, validate(crearSesionSchema), acreditacionController.crearSesion);
+routerPublico.get('/escanear', limiterPublico, acreditacionController.escanearQr);
+routerPublico.post('/sesion', limiterPublico, verificarPagoPendiente, validate(crearSesionSchema), acreditacionController.crearSesion);
 
 // Acreditar — público porque el acreditador no tiene cuenta,
 // pero validamos que la sesión exista en el service
 const routerAcciones = express.Router();
-routerAcciones.post('/individual', validate(acreditarIndividualSchema), acreditacionController.acreditarIndividual);
-routerAcciones.post('/grupal', validate(checkinGrupalSchema), acreditacionController.acreditarGrupal);
+routerAcciones.post('/individual', limiterPublico, validate(acreditarIndividualSchema), acreditacionController.acreditarIndividual);
+routerAcciones.post('/grupal', limiterPublico, validate(checkinGrupalSchema), acreditacionController.acreditarGrupal);
 
 const routerAdmin = express.Router();
 routerAdmin.use(autenticar);
