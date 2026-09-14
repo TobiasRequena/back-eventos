@@ -7,6 +7,7 @@ const s3Client = require('../../../config/s3');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { construirUrlPublica } = require('../../../utils/storage');
 const { v4: uuidv4 } = require('uuid');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 
 async function verificarEventoDeLaOrg(eventoId, orgId) {
   const evento = await eventosRepository.buscarPorId(eventoId);
@@ -111,6 +112,8 @@ async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = 
     adjuntos: adjuntosGuardados.length > 0 ? adjuntosGuardados : null,
   });
 
+  invalidar(`evento:${eventoId}`);
+
   // Obtener destinatarios
   const destinatarios = await obtenerDestinatarios(eventoId, datos.destinatarios, datos.filtros);
 
@@ -166,7 +169,7 @@ async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = 
 
 async function listarComunicaciones(eventoId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
-  return comunicacionesRepository.listarPorEvento(eventoId);
+  return getOrSet(`evento:${eventoId}`, 'comunicaciones', () => comunicacionesRepository.listarPorEvento(eventoId));
 }
 
 module.exports = { enviarComunicacion, listarComunicaciones };

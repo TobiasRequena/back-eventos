@@ -1,6 +1,6 @@
 const formulariosRepository = require('../repositories/formularios.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 
 /**
  * Verifica que el evento exista y pertenezca a la org, y que el campo
@@ -35,7 +35,7 @@ async function verificarCampoDelEvento(eventoId, campoId, orgId) {
 }
 
 async function listarCampos(eventoId, orgId) {
-  return getOrSet(`campos_form:${eventoId}`, async () => {
+  return getOrSet(`evento:${eventoId}`, 'campos_form', async () => {
     const evento = await eventosRepository.buscarPorId(eventoId);
     if (!evento) {
       const error = new Error('Evento no encontrado');
@@ -65,7 +65,9 @@ async function crearCampo(eventoId, orgId, datos) {
     throw error;
   }
 
-  return formulariosRepository.crear(eventoId, orgId, datos);
+  const campo = await formulariosRepository.crear(eventoId, orgId, datos);
+  invalidar(`evento:${eventoId}`);
+  return campo;
 }
 
 async function editarCampo(eventoId, campoId, orgId, datos) {
@@ -87,13 +89,15 @@ async function editarCampo(eventoId, campoId, orgId, datos) {
     datosDb.opciones = JSON.stringify(datos.opciones);
   }
 
-  return formulariosRepository.actualizar(campoId, datosDb);
+  const actualizado = await formulariosRepository.actualizar(campoId, datosDb);
+  invalidar(`evento:${eventoId}`);
+  return actualizado;
 }
 
 async function eliminarCampo(eventoId, campoId, orgId) {
   await verificarCampoDelEvento(eventoId, campoId, orgId);
   await formulariosRepository.eliminar(campoId);
-  invalidar(`campos_form:${eventoId}`);
+  invalidar(`evento:${eventoId}`);
 }
 
 /**
@@ -126,7 +130,9 @@ async function reordenarCampos(eventoId, orgId, campos) {
     }
   }
 
-  return formulariosRepository.reordenar(campos);
+  const resultado = await formulariosRepository.reordenar(campos);
+  invalidar(`evento:${eventoId}`);
+  return resultado;
 }
 
 module.exports = {

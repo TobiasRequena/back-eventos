@@ -6,7 +6,7 @@ const { desencriptar } = require('../../../utils/encryption');
 const ExcelJS = require('exceljs');
 const { templateAsignacionGrupo } = require('../../../utils/mailTemplates');
 const { enviarMail } = require('../../../utils/mail');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 const calcularEdad = require('../../../utils/calcularEdad');
 
 // ─── PRESETS DE NOMBRES ──────────────────────────────────────────────────────
@@ -197,45 +197,49 @@ async function verificarEsquemaDeLaOrg(esquemaId, orgId, trx = db) {
 async function crearEsquema(eventoId, orgId, usuarioId, datos) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   const esquema = await repo.crearEsquema({ ...datos, eventoId, orgId, creadoPorUsuarioId: usuarioId });
-  invalidar(`esquemas:evento:${eventoId}`);
+  invalidar(`evento:${eventoId}`);
   return esquema;
 }
 
 async function listarEsquemas(eventoId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
-  return getOrSet(`esquemas:evento:${eventoId}`, () => repo.listarPorEvento(eventoId));
+  return getOrSet(`evento:${eventoId}`, 'esquemas', () => repo.listarPorEvento(eventoId));
 }
 
 async function obtenerEsquema(eventoId, esquemaId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
-  const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const tandas = await repo.listarTandasPorEsquema(esquemaId);
-  const excluidos = await repo.listarExcluidosAdmin(esquemaId);
+  await verificarEsquemaDeLaOrg(esquemaId, orgId);
 
-  // Contar participantes fuera del esquema solo si ya fue generado
-  let nuevosNoContemplados = 0;
-  if (esquema.estado === 'generado') {
-    // IDs que ya están en el esquema (grupos o pendientes)
-    const enGrupos = await db('grupo_trabajo_participante')
-      .join('grupo_trabajo', 'grupo_trabajo.id', 'grupo_trabajo_participante.grupo_trabajo_id')
-      .where('grupo_trabajo.esquema_id', esquemaId)
-      .select('grupo_trabajo_participante.participante_id');
+  return getOrSet(`evento:${eventoId}`, `esquema:${esquemaId}`, async () => {
+    const esquema = await repo.buscarPorId(esquemaId);
+    const tandas = await repo.listarTandasPorEsquema(esquemaId);
+    const excluidos = await repo.listarExcluidosAdmin(esquemaId);
 
-    const enPendientes = await db('participante_esquema_pendiente')
-      .where({ esquema_id: esquemaId })
-      .select('participante_id');
+    // Contar participantes fuera del esquema solo si ya fue generado
+    let nuevosNoContemplados = 0;
+    if (esquema.estado === 'generado') {
+      // IDs que ya están en el esquema (grupos o pendientes)
+      const enGrupos = await db('grupo_trabajo_participante')
+        .join('grupo_trabajo', 'grupo_trabajo.id', 'grupo_trabajo_participante.grupo_trabajo_id')
+        .where('grupo_trabajo.esquema_id', esquemaId)
+        .select('grupo_trabajo_participante.participante_id');
 
-    const idsContemplados = new Set([
-      ...enGrupos.map(r => r.participante_id),
-      ...enPendientes.map(r => r.participante_id),
-    ]);
+      const enPendientes = await db('participante_esquema_pendiente')
+        .where({ esquema_id: esquemaId })
+        .select('participante_id');
 
-    // Universo base actual
-    const universo = await obtenerUniversoBase(esquema, eventoId);
-    nuevosNoContemplados = universo.filter(p => !idsContemplados.has(p.id)).length;
-  }
+      const idsContemplados = new Set([
+        ...enGrupos.map(r => r.participante_id),
+        ...enPendientes.map(r => r.participante_id),
+      ]);
 
-  return { ...esquema, tandas, excluidos, nuevosNoContemplados };
+      // Universo base actual
+      const universo = await obtenerUniversoBase(esquema, eventoId);
+      nuevosNoContemplados = universo.filter(p => !idsContemplados.has(p.id)).length;
+    }
+
+    return { ...esquema, tandas, excluidos, nuevosNoContemplados };
+  });
 }
 
 async function editarEsquema(eventoId, esquemaId, orgId, datos) {
@@ -261,15 +265,16 @@ async function editarEsquema(eventoId, esquemaId, orgId, datos) {
   if (datos.nombresLista !== undefined) datosDb.nombres_lista = JSON.stringify(datos.nombresLista);
   if (datos.mantenerGruposInscripcion !== undefined) datosDb.mantener_grupos_inscripcion = datos.mantenerGruposInscripcion;
 
-  invalidar(`esquemas:evento:${eventoId}`);
-  return repo.actualizarEsquema(esquemaId, datosDb);
+  const actualizado = await repo.actualizarEsquema(esquemaId, datosDb);
+  invalidar(`evento:${eventoId}`);
+  return actualizado;
 }
 
 async function eliminarEsquema(eventoId, esquemaId, orgId) {
-  invalidar(`esquemas:evento:${eventoId}`);
   await verificarEventoDeLaOrg(eventoId, orgId);
   await verificarEsquemaDeLaOrg(esquemaId, orgId);
   await repo.eliminarEsquema(esquemaId);
+  invalidar(`evento:${eventoId}`);
 }
 
 // ─── TANDAS ──────────────────────────────────────────────────────────────────
@@ -327,54 +332,57 @@ async function quitarExcluido(eventoId, esquemaId, participanteId, orgId) {
 async function preview(eventoId, esquemaId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const lista = resolverListaNombres(esquema);
 
-  const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId);
-  const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
+  return getOrSet(`evento:${eventoId}`, `preview:${esquemaId}`, async () => {
+    const lista = resolverListaNombres(esquema);
 
-  const participantes = await obtenerUniversoBase(esquema, eventoId);
-  const elegibles = participantes.filter(p => !idsExcluidosAdmin.has(p.id));
+    const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId);
+    const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
 
-  const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
-  const tamanoPromedio = Math.floor(elegibles.length / cantGrupos);
-  const sobrante = elegibles.length % cantGrupos;
+    const participantes = await obtenerUniversoBase(esquema, eventoId);
+    const elegibles = participantes.filter(p => !idsExcluidosAdmin.has(p.id));
 
-  // Generar nombres de preview
-  const grupos = [];
-  for (let i = 0; i < cantGrupos; i++) {
-    let nombre;
-    try {
-      nombre = generarNombreGrupo({
-        modoNombrado: 'por_grupo',
-        lista,
-        accionSinNombres: esquema.accion_sin_nombres,
-        indiceGlobal: i,
-        nombreTanda: null,
-        indiceEnTanda: i,
+    const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
+    const tamanoPromedio = Math.floor(elegibles.length / cantGrupos);
+    const sobrante = elegibles.length % cantGrupos;
+
+    // Generar nombres de preview
+    const grupos = [];
+    for (let i = 0; i < cantGrupos; i++) {
+      let nombre;
+      try {
+        nombre = generarNombreGrupo({
+          modoNombrado: 'por_grupo',
+          lista,
+          accionSinNombres: esquema.accion_sin_nombres,
+          indiceGlobal: i,
+          nombreTanda: null,
+          indiceEnTanda: i,
+        });
+      } catch {
+        nombre = `Grupo ${i + 1}`;
+      }
+      grupos.push({
+        nombre,
+        cantidad: tamanoPromedio + (i < sobrante ? 1 : 0),
       });
-    } catch {
-      nombre = `Grupo ${i + 1}`;
     }
-    grupos.push({
-      nombre,
-      cantidad: tamanoPromedio + (i < sobrante ? 1 : 0),
-    });
-  }
 
-  const nombresDisponibles = lista.length;
-  const gruposNecesarios = cantGrupos;
-  const nombresAlcanzan = esquema.accion_sin_nombres === 'reciclar_numerado'
-    ? true  // siempre alcanza porque recicla
-    : nombresDisponibles >= gruposNecesarios;
+    const nombresDisponibles = lista.length;
+    const gruposNecesarios = cantGrupos;
+    const nombresAlcanzan = esquema.accion_sin_nombres === 'reciclar_numerado'
+      ? true  // siempre alcanza porque recicla
+      : nombresDisponibles >= gruposNecesarios;
 
-  return {
-    totalElegibles: elegibles.length,
-    grupos,
-    pendientesEstimados: excluidosAdmin.length,
-    nombresAlcanzan,
-    nombresDisponibles,
-    gruposNecesarios,
-  };
+    return {
+      totalElegibles: elegibles.length,
+      grupos,
+      pendientesEstimados: excluidosAdmin.length,
+      nombresAlcanzan,
+      nombresDisponibles,
+      gruposNecesarios,
+    };
+  });
 }
 
 // ─── HELPERS INTERNOS ────────────────────────────────────────────────────────
@@ -467,7 +475,7 @@ async function generar(eventoId, esquemaId, orgId) {
     }
   }
 
-  return db.transaction(async (trx) => {
+  const resultado = await db.transaction(async (trx) => {
     const excluidosAdmin = await repo.listarExcluidosAdmin(esquemaId, trx);
     const idsExcluidosAdmin = new Set(excluidosAdmin.map(e => e.participante_id));
 
@@ -605,6 +613,9 @@ async function generar(eventoId, esquemaId, orgId) {
       pendientes: pendientes.length,
     };
   });
+
+  invalidar(`evento:${eventoId}`);
+  return resultado;
 }
 // ─── AJUSTES MANUALES ────────────────────────────────────────────────────────
 
@@ -615,9 +626,7 @@ async function asignarAGrupo(eventoId, esquemaId, grupoId, participanteId, orgId
     const error = new Error('Grupo no encontrado en este esquema'); error.status = 404; throw error;
   }
 
-  invalidar(`grupos_trabajo:${esquemaId}`);
-  invalidar(`pendientes:${esquemaId}`);
-  return db.transaction(async (trx) => {
+  await db.transaction(async (trx) => {
     // Si está en otro grupo del mismo esquema, moverlo
     const grupos = await trx('grupo_trabajo').where({ esquema_id: esquemaId }).select('id');
     for (const g of grupos) {
@@ -634,12 +643,14 @@ async function asignarAGrupo(eventoId, esquemaId, grupoId, participanteId, orgId
     // Agregar al grupo destino
     await repo.agregarIntegrantes([{ grupo_trabajo_id: grupoId, participante_id: participanteId }], trx);
   });
+
+  invalidar(`evento:${eventoId}`);
 }
 
 async function quitarDeGrupo(eventoId, esquemaId, grupoId, participanteId, orgId) {
   await verificarEsquemaDeLaOrg(esquemaId, orgId);
 
-  return db.transaction(async (trx) => {
+  await db.transaction(async (trx) => {
     await repo.eliminarIntegrante(grupoId, participanteId, trx);
     await repo.agregarPendientes([{
       esquema_id: esquemaId,
@@ -647,11 +658,13 @@ async function quitarDeGrupo(eventoId, esquemaId, grupoId, participanteId, orgId
       motivo: 'retirado_manual',
     }], trx);
   });
+
+  invalidar(`evento:${eventoId}`);
 }
 
 async function listarGrupos(eventoId, esquemaId, orgId) {
   await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  return getOrSet(`grupos_trabajo:${esquemaId}`, async () => {
+  return getOrSet(`evento:${eventoId}`, `grupos_trabajo:${esquemaId}`, async () => {
     const grupos = await repo.listarGruposPorEsquema(esquemaId);
 
     // Desencriptar DNI de cada integrante
@@ -668,12 +681,15 @@ async function listarGrupos(eventoId, esquemaId, orgId) {
 
 async function listarPendientes(eventoId, esquemaId, orgId) {
   await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const pendientes = await repo.listarPendientesPorEsquema(esquemaId);
 
-  return pendientes.map(p => {
-    let dniLegible = p.dni;
-    try { dniLegible = desencriptar(p.dni); } catch { }
-    return { ...p, dni: dniLegible };
+  return getOrSet(`evento:${eventoId}`, `pendientes:${esquemaId}`, async () => {
+    const pendientes = await repo.listarPendientesPorEsquema(esquemaId);
+
+    return pendientes.map(p => {
+      let dniLegible = p.dni;
+      try { dniLegible = desencriptar(p.dni); } catch { }
+      return { ...p, dni: dniLegible };
+    });
   });
 }
 

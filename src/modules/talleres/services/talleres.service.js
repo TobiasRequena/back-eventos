@@ -3,7 +3,7 @@ const talleresRepository = require('../repositories/talleres.repository');
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const ExcelJS = require('exceljs');
 const { desencriptar } = require('../../../utils/encryption');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 const calcularEdad = require('../../../utils/calcularEdad');
 
 const ESTADO_PAGO_LABELS = {
@@ -42,7 +42,7 @@ async function verificarEventoDeLaOrg(eventoId, orgId, trx = db) {
  * con sus talleres internos, en una transacción.
  */
 async function crearBloque(eventoId, orgId, datos) {
-  return db.transaction(async (trx) => {
+  const bloqueCreado = await db.transaction(async (trx) => {
     await verificarEventoDeLaOrg(eventoId, orgId, trx);
 
     const [bloqueCreado] = await talleresRepository.crearBloquesConTalleres(
@@ -54,13 +54,16 @@ async function crearBloque(eventoId, orgId, datos) {
 
     return bloqueCreado;
   });
+
+  invalidar(`evento:${eventoId}`);
+  return bloqueCreado;
 }
 
 /**
  * Lista los bloques (con sus talleres anidados) de un evento.
  */
 async function listarBloques(eventoId, orgId) {
-  return getOrSet(`bloques:${eventoId}`, async () => {
+  return getOrSet(`evento:${eventoId}`, 'bloques', async () => {
     await verificarEventoDeLaOrg(eventoId, orgId);
     return talleresRepository.listarBloquesPorEvento(eventoId);
   });
@@ -101,9 +104,9 @@ async function editarBloque(id, orgId, datos) {
   if (datos.orden !== undefined) datosDb.orden = datos.orden;
   if (datos.inicio !== undefined) datosDb.inicio = datos.inicio;
   if (datos.fin !== undefined) datosDb.fin = datos.fin;
-  invalidarPorPrefijo(`bloques:${bloque.evento_id}`); // ← usar bloque.evento_id
-  invalidarPorPrefijo(`participantes:evento:${bloque.evento_id}`);
-  return talleresRepository.actualizarBloque(id, datosDb);
+  const actualizado = await talleresRepository.actualizarBloque(id, datosDb);
+  invalidar(`evento:${bloque.evento_id}`);
+  return actualizado;
 }
 
 /**
@@ -120,9 +123,8 @@ async function eliminarBloque(id, orgId) {
     const error = new Error('No se puede eliminar un bloque que todavía tiene talleres.');
     error.status = 409; throw error;
   }
-  invalidarPorPrefijo(`bloques:${bloque.evento_id}`); // ← usar bloque.evento_id
-  invalidarPorPrefijo(`participantes:evento:${bloque.evento_id}`);
   await talleresRepository.eliminarBloque(id);
+  invalidar(`evento:${bloque.evento_id}`);
 }
 
 // ---------- taller ----------
@@ -133,7 +135,9 @@ async function eliminarBloque(id, orgId) {
  */
 async function crearTallerEnBloque(bloqueId, orgId, datos) {
   const bloque = await obtenerBloque(bloqueId, orgId);
-  return talleresRepository.crearEnBloque(bloque, datos);
+  const taller = await talleresRepository.crearEnBloque(bloque, datos);
+  invalidar(`evento:${bloque.evento_id}`);
+  return taller;
 }
 
 /**
@@ -183,8 +187,9 @@ async function editarTaller(id, orgId, datos) {
   if (datos.lugarId !== undefined) datosDb.lugar_id = datos.lugarId;
   if (datos.esObligatorio !== undefined) datosDb.es_obligatorio = datos.esObligatorio;
 
-  invalidarPorPrefijo(`bloques:${taller.evento_id}`);
-  return talleresRepository.actualizar(id, datosDb);
+  const actualizado = await talleresRepository.actualizar(id, datosDb);
+  invalidar(`evento:${taller.evento_id}`);
+  return actualizado;
 }
 
 /**
@@ -195,8 +200,9 @@ async function editarTaller(id, orgId, datos) {
  * no la forzamos acá).
  */
 async function eliminarTaller(id, orgId) {
-  await obtenerTaller(id, orgId);
+  const taller = await obtenerTaller(id, orgId);
   await talleresRepository.eliminar(id);
+  invalidar(`evento:${taller.evento_id}`);
 }
 
 async function crearTallerSuelto(eventoId, orgId, datos) {
@@ -215,13 +221,15 @@ async function crearTallerSuelto(eventoId, orgId, datos) {
     es_obligatorio: datos.esObligatorio ?? false,
   }).returning('*');
 
-  invalidarPorPrefijo(`bloques:${eventoId}`);
+  invalidar(`evento:${eventoId}`);
   return taller;
 }
 
 async function listarInscriptos(tallerId, orgId) {
-  await obtenerTaller(tallerId, orgId);
-  return talleresRepository.listarInscriptos(tallerId);
+  const taller = await obtenerTaller(tallerId, orgId);
+  return getOrSet(`evento:${taller.evento_id}`, `inscriptos_taller:${tallerId}`, () => (
+    talleresRepository.listarInscriptos(tallerId)
+  ));
 }
 
 /**
@@ -238,8 +246,10 @@ async function listarInscriptos(tallerId, orgId) {
  *   que se pase del máximo permitido.
  */
 async function asignarParticipante(tallerId, orgId, participanteId) {
-  return db.transaction(async (trx) => {
+  let eventoId = null;
+  const resultado = await db.transaction(async (trx) => {
     const taller = await talleresRepository.buscarPorId(tallerId, trx);
+    if (taller) eventoId = taller.evento_id;
     if (!taller) {
       const error = new Error('Taller no encontrado');
       error.status = 404;
@@ -289,6 +299,9 @@ async function asignarParticipante(tallerId, orgId, participanteId) {
 
     return talleresRepository.asignarParticipante({ participanteId, tallerId, orgId }, trx);
   });
+
+  if (eventoId) invalidar(`evento:${eventoId}`);
+  return resultado;
 }
 
 async function desasignarParticipante(tallerId, orgId, participanteId) {
@@ -302,6 +315,7 @@ async function desasignarParticipante(tallerId, orgId, participanteId) {
   }
 
   await talleresRepository.desasignarParticipante(participanteId, taller.id);
+  invalidar(`evento:${taller.evento_id}`);
 }
 
 async function generarExcelTaller(tallerId, orgId) {

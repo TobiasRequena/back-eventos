@@ -7,6 +7,7 @@ const { emitirAEvento } = require('../../../sockets/emitter');
 const EVENTOS_WS = require('../../../sockets/events');
 const { desencriptar } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 
 /**
  * Crea una sesión de acreditador — identidad efímera para el día del evento.
@@ -23,13 +24,16 @@ async function crearSesion(orgId, datos) {
   // Si no viene orgId (acceso público), lo tomamos del evento
   const orgIdFinal = orgId ?? evento.org_id;
 
-  return acreditacionRepository.crearSesion({
+  const sesion = await acreditacionRepository.crearSesion({
     orgId: orgIdFinal,
     eventoId: datos.eventoId,
     puntoAccesoId: datos.puntoAccesoId,
     nombre: datos.nombre,
     apellido: datos.apellido,
   });
+
+  invalidar(`evento:${datos.eventoId}`);
+  return sesion;
 }
 
 /**
@@ -138,7 +142,8 @@ async function escanearQr(qrPersonal, eventoId) {
  * Si ya fue acreditado, devuelve un error claro (el UNIQUE de la DB también lo impide).
  */
 async function acreditarIndividual(participanteId, acreditadorId, orgId, puntoAccesoId) {
-  return db.transaction(async (trx) => {
+  let eventoId = null;
+  const resultado = await db.transaction(async (trx) => {
     const participante = await participantesRepository.buscarPorId(participanteId, trx);
     if (!participante) {
       const error = new Error('Participante no encontrado');
@@ -155,6 +160,7 @@ async function acreditarIndividual(participanteId, acreditadorId, orgId, puntoAc
 
     // Resolver orgId desde el participante si no viene del header
     const orgIdFinal = orgId ?? participante.org_id;
+    eventoId = participante.evento_id;
 
     const yaAcreditado = await acreditacionRepository.buscarCheckinPorParticipante(
       participanteId,
@@ -191,6 +197,9 @@ async function acreditarIndividual(participanteId, acreditadorId, orgId, puntoAc
 
     return checkin;
   });
+
+  if (eventoId) invalidar(`evento:${eventoId}`);
+  return resultado;
 }
 
 /**
@@ -199,7 +208,7 @@ async function acreditarIndividual(participanteId, acreditadorId, orgId, puntoAc
  * Los que ya estaban acreditados se saltean sin error.
  */
 async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAccesoId, eventoId) {
-  return db.transaction(async (trx) => {
+  const resultado = await db.transaction(async (trx) => {
     let orgIdFinal = orgId;
     if (!orgIdFinal) {
       const evento = await eventosRepository.buscarPorId(eventoId, trx);
@@ -288,10 +297,15 @@ async function acreditarGrupal(participanteIds, acreditadorId, orgId, puntoAcces
 
     return resultados;
   });
+
+  invalidar(`evento:${eventoId}`);
+  return resultado;
 }
 
 async function listarAcreditadores(eventoId, orgId) {
-  return acreditacionRepository.listarAcreditadores(eventoId, orgId);
+  return getOrSet(`evento:${eventoId}`, 'acreditadores', () => (
+    acreditacionRepository.listarAcreditadores(eventoId, orgId)
+  ));
 }
 
 module.exports = {

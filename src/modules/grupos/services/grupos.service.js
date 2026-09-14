@@ -11,6 +11,7 @@ const QRCode = require('qrcode');
 const { sanitizarParticipante } = require('../../participantes/services/participantes.service');
 const { hashDni } = require('../../../utils/encryption');
 const { desencriptar } = require('../../../utils/encryption');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 
 /**
  * Genera el código de invitación — 8 caracteres alfanuméricos en mayúsculas,
@@ -40,7 +41,7 @@ function armarUrlQr(codigoEvento, codigoInv) {
  *    (reintentamos si hay colisión, aunque es extremadamente improbable).
  */
 async function crearGrupo(orgId, datos) {
-  return db.transaction(async (trx) => {
+  const grupo = await db.transaction(async (trx) => {
     const evento = await eventosRepository.buscarPorId(datos.eventoId, trx);
     if (!evento) {
       const error = new Error('Evento no encontrado');
@@ -149,6 +150,9 @@ async function crearGrupo(orgId, datos) {
 
     return grupo;
   });
+
+  invalidar(`evento:${datos.eventoId}`);
+  return grupo;
 }
 
 /**
@@ -167,11 +171,13 @@ async function listarGrupos(eventoId, orgId) {
     throw error;
   }
 
-  return gruposRepository.listarPorEvento(eventoId);
+  return getOrSet(`evento:${eventoId}`, 'grupos', () => gruposRepository.listarPorEvento(eventoId));
 }
 
 /**
  * Obtiene un grupo por id, verificando pertenencia a la organización.
+ * Query liviana (una fila) — no vale la pena cachearla, y la necesitamos
+ * sin caché para saber el evento_id antes de cachear lo que cuelga de ella.
  */
 async function obtenerGrupo(id, orgId) {
   const grupo = await gruposRepository.buscarPorId(id);
@@ -195,7 +201,7 @@ async function obtenerGrupo(id, orgId) {
  * Edita datos del grupo (nombre, parroquia, localidad, maxIntegrantes).
  */
 async function editarGrupo(id, orgId, datos) {
-  await obtenerGrupo(id, orgId);
+  const grupo = await obtenerGrupo(id, orgId);
 
   const datosDb = {};
   if (datos.nombre !== undefined) datosDb.nombre = datos.nombre;
@@ -203,14 +209,16 @@ async function editarGrupo(id, orgId, datos) {
   if (datos.localidad !== undefined) datosDb.localidad = datos.localidad;
   if (datos.maxIntegrantes !== undefined) datosDb.max_integrantes = datos.maxIntegrantes;
 
-  return gruposRepository.actualizar(id, datosDb);
+  const actualizado = await gruposRepository.actualizar(id, datosDb);
+  invalidar(`evento:${grupo.evento_id}`);
+  return actualizado;
 }
 
 /**
  * Elimina un grupo. No se puede eliminar si tiene integrantes.
  */
 async function eliminarGrupo(id, orgId) {
-  await obtenerGrupo(id, orgId);
+  const grupo = await obtenerGrupo(id, orgId);
 
   const integrantes = await gruposRepository.contarIntegrantes(id);
   if (integrantes > 0) {
@@ -220,6 +228,7 @@ async function eliminarGrupo(id, orgId) {
   }
 
   await gruposRepository.eliminar(id);
+  invalidar(`evento:${grupo.evento_id}`);
 }
 
 /**
@@ -251,18 +260,22 @@ async function resolverCodigoInvitacion(codigoInv) {
  * Lista los integrantes del grupo con todos sus campos.
  */
 async function listarIntegrantes(id, orgId, contexto = 'admin') {
-  await obtenerGrupo(id, orgId);
-  const integrantes = await gruposRepository.listarIntegrantes(id);
-  return integrantes.map((p) => sanitizarParticipante(p, contexto));
+  const grupo = await obtenerGrupo(id, orgId);
+  return getOrSet(`evento:${grupo.evento_id}`, `integrantes:${id}:${contexto}`, async () => {
+    const integrantes = await gruposRepository.listarIntegrantes(id);
+    return integrantes.map((p) => sanitizarParticipante(p, contexto));
+  });
 }
 
 /**
  * Lista los autoinscriptos pendientes de aprobación.
  */
 async function listarSolicitudes(id, orgId, contexto = 'admin') {
-  await obtenerGrupo(id, orgId);
-  const solicitudes = await gruposRepository.listarSolicitudes(id);
-  return solicitudes.map((p) => sanitizarParticipante(p, contexto));
+  const grupo = await obtenerGrupo(id, orgId);
+  return getOrSet(`evento:${grupo.evento_id}`, `solicitudes:${id}:${contexto}`, async () => {
+    const solicitudes = await gruposRepository.listarSolicitudes(id);
+    return solicitudes.map((p) => sanitizarParticipante(p, contexto));
+  });
 }
 
 /**

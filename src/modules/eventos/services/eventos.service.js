@@ -8,7 +8,7 @@ const participantesRepository = require('../../participantes/repositories/partic
 const pagosRepository = require('../../pagos/repositories/pagos.repository');
 const { desencriptar } = require('../../../utils/encryption');
 const { construirUrlPublica } = require('../../../utils/storage');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 const sanitizarParticipante = require('../../../utils/sanitizarParticipante')
 const calcularEdad = require('../../../utils/calcularEdad');
 
@@ -33,7 +33,7 @@ const ESTADO_PAGO_LABELS = {
  *    todavía no existe, así que no disparamos ninguna creación de `pago` acá.
  */
 async function crearEvento(orgId, usuarioId, datos) {
-  return db.transaction(async (trx) => {
+  const resultado = await db.transaction(async (trx) => {
     // 1. Validar disponibilidad del código (entre eventos vigentes)
     const eventoConEseCodigo = await eventosRepository.buscarActivoPorCodigo(datos.codigo, trx);
     if (eventoConEseCodigo) {
@@ -73,8 +73,6 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
-    invalidarPorPrefijo(`eventos:org:${orgId}`);
-
     // 4. Crear los campos de formulario, si vinieron
     const camposCreados = await formulariosRepository.crearVarios(
       evento.id,
@@ -113,6 +111,9 @@ async function crearEvento(orgId, usuarioId, datos) {
       esPrimerEventoGratis: esPrimerEvento,
     };
   });
+
+  invalidar(`org:${orgId}`);
+  return resultado;
 }
 
 /**
@@ -127,7 +128,7 @@ async function crearEvento(orgId, usuarioId, datos) {
  * en obtenerEvento, hasta que exista el módulo participantes.
  */
 async function listarEventos(orgId) {
-  return getOrSet(`eventos:org:${orgId}`, async () => {
+  return getOrSet(`org:${orgId}`, 'eventos', async () => {
     const eventos = await eventosRepository.listarPorOrganizacion(orgId);
 
     return Promise.all(
@@ -173,6 +174,8 @@ async function listarEventos(orgId) {
  * con evento_id = este evento).
  */
 async function obtenerEvento(id, orgId) {
+  // Validar pertenencia primero, sin caché — es una check de seguridad
+  // (buscarPorId es una sola query liviana, no vale la pena cachearla acá).
   const evento = await eventosRepository.buscarPorId(id);
 
   if (!evento) {
@@ -187,30 +190,32 @@ async function obtenerEvento(id, orgId) {
     throw error;
   }
 
-  const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
-    formulariosRepository.listarPorEvento(evento.id),
-    talleresRepository.listarBloquesPorEvento(evento.id),
-    archivosRepository.buscarPortadaDeEvento(evento.id),
-    participantesRepository.contarPorEvento(evento.id),
-    pagosRepository.buscarPagoPendientePorEvento(evento.id),
-    talleresRepository.listarTalleresSueltosPorEvento(evento.id),
-  ]);
+  return getOrSet(`evento:${id}`, 'detalle_completo', async () => {
+    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
+      formulariosRepository.listarPorEvento(evento.id),
+      talleresRepository.listarBloquesPorEvento(evento.id),
+      archivosRepository.buscarPortadaDeEvento(evento.id),
+      participantesRepository.contarPorEvento(evento.id),
+      pagosRepository.buscarPagoPendientePorEvento(evento.id),
+      talleresRepository.listarTalleresSueltosPorEvento(evento.id),
+    ]);
 
-  return {
-    ...evento,
-    camposForm,
-    bloquesTaller,
-    talleresSueltos,
-    cantidadInscriptos,
-    imagenUrl: construirUrlPublica(portada?.key),
-    pagoPlataforma: pagoPendiente
-      ? {
-        estado: pagoPendiente.estado,
-        monto: pagoPendiente.monto,
-        pagoId: pagoPendiente.id,
-      }
-      : null,
-  };
+    return {
+      ...evento,
+      camposForm,
+      bloquesTaller,
+      talleresSueltos,
+      cantidadInscriptos,
+      imagenUrl: construirUrlPublica(portada?.key),
+      pagoPlataforma: pagoPendiente
+        ? {
+          estado: pagoPendiente.estado,
+          monto: pagoPendiente.monto,
+          pagoId: pagoPendiente.id,
+        }
+        : null,
+    };
+  });
 }
 
 /**
@@ -219,8 +224,6 @@ async function obtenerEvento(id, orgId) {
  */
 async function editarEvento(id, orgId, datos) {
   const evento = await obtenerEvento(id, orgId);
-  invalidar(`evento:${id}`);
-  invalidarPorPrefijo(`eventos:org:${orgId}`);
 
   const fechaInicioFinal = datos.fechaInicio ?? evento.fecha_inicio;
   const fechaFinFinal = datos.fechaFin ?? evento.fecha_fin;
@@ -261,7 +264,9 @@ async function editarEvento(id, orgId, datos) {
   if (datos.configCertificado !== undefined) datosDb.config_certificado = datos.configCertificado;
   if (datos.autorizacionTemplateUrl !== undefined) datosDb.autorizacion_template_url = datos.autorizacionTemplateUrl;
 
-  return eventosRepository.actualizar(id, datosDb);
+  const eventoActualizado = await eventosRepository.actualizar(id, datosDb);
+  invalidar(`evento:${id}`, `org:${orgId}`);
+  return eventoActualizado;
 }
 
 /**
@@ -270,8 +275,7 @@ async function editarEvento(id, orgId, datos) {
 async function eliminarEvento(id, orgId) {
   await obtenerEvento(id, orgId); // valida existencia + pertenencia, descarta el resultado
   await eventosRepository.eliminar(id);
-  invalidar(`evento:${id}`);
-  invalidarPorPrefijo(`eventos:org:${orgId}`);
+  invalidar(`evento:${id}`, `org:${orgId}`);
 }
 
 /**
@@ -342,6 +346,10 @@ async function obtenerStats(id, orgId) {
   if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
   if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
+  return getOrSet(`evento:${id}`, 'stats', () => calcularStatsEvento(id, evento));
+}
+
+async function calcularStatsEvento(id, evento) {
   const [totalInscriptos, bloques, campos, filas, talleresSueltos, resumenPagos, kpisFicha, cantidadAcreditados] = await Promise.all([
     eventosRepository.contarInscriptos(id),
     talleresRepository.listarBloquesPorEvento(id),
@@ -626,11 +634,14 @@ async function obtenerStatsInscripciones(orgId, rango = '7d') {
   fechaInicio.setDate(fechaInicio.getDate() - (dias - 1));
   fechaInicio.setHours(0, 0, 0, 0);
 
-  // Traer los días con inscripciones de la DB
-  const resultadosDb = await eventosRepository.contarInscripcionesPorDia(
-    orgId,
-    fechaInicio,
-    fechaFin
+  // Traer los días con inscripciones de la DB.
+  // TTL corto en vez de invalidación: depende de "hoy" y de inscripciones en
+  // CUALQUIER evento de la org, así que atarlo a `evento:${id}` no alcanzaría.
+  const resultadosDb = await getOrSet(
+    `org:${orgId}`,
+    `inscripciones_por_dia:${rango}:${fechaFin.toISOString().split('T')[0]}`,
+    () => eventosRepository.contarInscripcionesPorDia(orgId, fechaInicio, fechaFin),
+    120
   );
 
   // Construir un mapa { 'YYYY-MM-DD': cantidad }
@@ -675,8 +686,10 @@ async function listarPendientesPago(id, orgId) {
   if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
   if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
-  const participantes = await participantesRepository.listarPorEvento(id, { estadoPago: 'pendiente_aprobacion' });
-  return participantes.map(p => sanitizarParticipante(p, 'admin'));
+  return getOrSet(`evento:${id}`, 'pendientes_pago', async () => {
+    const participantes = await participantesRepository.listarPorEvento(id, { estadoPago: 'pendiente_aprobacion' });
+    return participantes.map(p => sanitizarParticipante(p, 'admin'));
+  });
 }
 
 async function listarFichasMedicas(id, orgId) {
@@ -684,7 +697,7 @@ async function listarFichasMedicas(id, orgId) {
   if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
   if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
 
-  return eventosRepository.listarFichasMedicasRelevantes(id);
+  return getOrSet(`evento:${id}`, 'fichas_medicas', () => eventosRepository.listarFichasMedicasRelevantes(id));
 }
 
 module.exports = {

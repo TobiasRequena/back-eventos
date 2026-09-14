@@ -120,6 +120,10 @@ async function subirArchivo(buffer, metadata, datos) {
     sizeBytes: bufferFinal.length, // tamaño real post-optimización
   });
 
+  if (datos.contexto === 'portada_evento') {
+    invalidar(`evento:${datos.eventoId}`, `org:${datos.orgId}`);
+  }
+
   return {
     ...archivo,
     url: construirUrlPublica(key),

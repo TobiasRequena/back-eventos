@@ -8,7 +8,7 @@ const { enviarMail } = require('../../../utils/mail');
 const { templatePagoPlataformaPendiente } = require('../../../utils/mailTemplates');
 const { emitirAEvento } = require('../../../sockets/emitter');
 const EVENTOS_WS = require('../../../sockets/events');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 
 /**
  * Se llama después de crear un participante (fire and forget).
@@ -21,10 +21,12 @@ async function verificarYGenerarCargo(eventoId) {
   let cantidadActual = null;
   let montoACobrar = null;
   let esUrgente = false;
+  let orgId = null;
 
   await db.transaction(async (trx) => {
     const evento = await eventosRepository.buscarPorId(eventoId, trx);
     if (!evento) return;
+    orgId = evento.org_id;
 
     cantidadActual = await participantesRepository.contarPorEvento(eventoId, trx);
     eventoNombre = evento.nombre;
@@ -101,6 +103,10 @@ async function verificarYGenerarCargo(eventoId) {
     adminEmail = admin?.email;
   });
 
+  // Solo invalidar si efectivamente se creó un pago nuevo (afecta el pagoPendiente
+  // que se muestra en el listado de eventos de la org).
+  if (pagoId && orgId) invalidar(`org:${orgId}`, `evento:${eventoId}`);
+
   if (!pagoId || !montoACobrar) return;
 
   try {
@@ -146,7 +152,9 @@ async function verificarYGenerarCargo(eventoId) {
  * y les manda los mails con QR.
  */
 async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
-  return db.transaction(async (trx) => {
+  let pagoAprobado = null;
+
+  await db.transaction(async (trx) => {
     const pago = await trx('pago').where({ ref_pasarela: refPasarela }).first();
 
     if (!pago) {
@@ -191,8 +199,7 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
       .where({ id: pago.evento_id })
       .update({ participantes_facturados: cantidadActual });
 
-    invalidar(`evento:${pago.evento_id}`);
-    invalidarPorPrefijo(`admin:stats:`);
+    pagoAprobado = pago;
 
     emitirAEvento(pago.evento_id, EVENTOS_WS.PAGO_ACTUALIZADO, {
       pagoId: pago.id,
@@ -200,6 +207,10 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
       estado: 'aprobado',
     });
   });
+
+  if (pagoAprobado) {
+    invalidar(`evento:${pagoAprobado.evento_id}`, `org:${pagoAprobado.org_id}`);
+  }
 }
 
 async function reenviarMailPago(eventoId, orgId) {
@@ -348,11 +359,12 @@ async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
     enviarMail({ to: admin.email, subject, html });
   }
 
+  invalidar(`evento:${eventoId}`, `org:${orgId}`);
   return { linkPago: paymentLink.url, monto, tramo: tramoObjetivo };
 }
 
 async function listarTramos() {
-  return getOrSet('tramos_precio', async () => {
+  return getOrSet('global', 'tramos_precio', async () => {
     return pagosRepository.listarTramos();
   }, 3600);
 }
@@ -370,25 +382,31 @@ async function listarPagosEvento(eventoId, orgId) {
     throw error;
   }
 
-  const pagos = await pagosRepository.listarPagosPorEvento(eventoId);
+  return getOrSet(`evento:${eventoId}`, 'pagos_evento', async () => {
+    const pagos = await pagosRepository.listarPagosPorEvento(eventoId);
 
-  return {
-    participantesFacturados: evento.participantes_facturados,
-    pagos: pagos.map((p) => ({
-      id: p.id,
-      monto: p.monto,
-      estado: p.estado,
-      creadoEn: p.creado_en,
-    })),
-  };
+    return {
+      participantesFacturados: evento.participantes_facturados,
+      pagos: pagos.map((p) => ({
+        id: p.id,
+        monto: p.monto,
+        estado: p.estado,
+        creadoEn: p.creado_en,
+      })),
+    };
+  });
 }
 
 async function listarEventosActivos(orgId) {
-  return pagosRepository.listarEventosActivosConPago(orgId);
+  return getOrSet(`org:${orgId}`, 'eventos_activos_pago', () => (
+    pagosRepository.listarEventosActivosConPago(orgId)
+  ));
 }
 
 async function listarHistorial(orgId) {
-  return pagosRepository.listarHistorialPagos(orgId);
+  return getOrSet(`org:${orgId}`, 'historial_pagos', () => (
+    pagosRepository.listarHistorialPagos(orgId)
+  ));
 }
 
 module.exports = {

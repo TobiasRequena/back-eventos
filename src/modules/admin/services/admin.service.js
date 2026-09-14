@@ -1,4 +1,5 @@
 const adminRepository = require('../repositories/admin.repository');
+const { getOrSet } = require('../../../utils/cache');
 
 function rellenarDias(porDia, desde, hasta) {
   const mapa = {};
@@ -25,6 +26,12 @@ function calcularVariacion(actual, anterior) {
 }
 
 async function obtenerStats(desde, hasta) {
+  // Agrega sobre toda la plataforma (no hay un evento/org puntual que invalidar
+  // acá) — se cachea con TTL corto en vez de invalidación por evento.
+  return getOrSet('global', `admin_stats:${desde}:${hasta}`, () => calcularStats(desde, hasta), 60);
+}
+
+async function calcularStats(desde, hasta) {
   // Calcular período anterior (mismo rango pero 1 mes atrás)
   const desdeAnterior = new Date(desde);
   desdeAnterior.setMonth(desdeAnterior.getMonth() - 1);

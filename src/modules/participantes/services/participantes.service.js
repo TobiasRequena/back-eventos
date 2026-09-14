@@ -21,7 +21,7 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
-const { getOrSet, invalidar, invalidarPorPrefijo } = require('../../../utils/cache');
+const { getOrSet, invalidar } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
 const calcularEdad = require('../../../utils/calcularEdad');
 const sanitizarParticipante = require('../../../utils/sanitizarParticipante');
@@ -47,7 +47,7 @@ function calcularEsMayor(nacimiento) {
 }
 
 async function buscarEventoCacheado(id) {
-  return getOrSet(`evento:${id}`, () => eventosRepository.buscarPorId(id));
+  return getOrSet(`evento:${id}`, 'detalle', () => eventosRepository.buscarPorId(id));
 }
 
 
@@ -366,14 +366,13 @@ async function crearParticipante(orgId, datos) {
       }
     }, 3000);
 
-    invalidarPorPrefijo(`participantes:evento:${datos.eventoId}`);
-    invalidarPorPrefijo(`evento:${datos.eventoId}`);
-
     return sanitizarParticipante({
       ...participante,
       tiene_ficha_medica: !!datos.fichaMedica,
     }, 'admin');
   });
+
+  invalidar(`evento:${datos.eventoId}`);
 
   // fire and forget FUERA de la transacción
   setImmediate(() => {
@@ -399,14 +398,17 @@ async function listarParticipantes(eventoId, orgId, filtros = {}) {
     const error = new Error('No tenés permisos sobre este evento'); error.status = 403; throw error;
   }
 
-  // Si hay filtros → no cachear (resultado varía)
-  if (Object.keys(filtros).length > 0) {
+  // Si hay filtros reales (con valor) → no cachear (resultado varía).
+  // filtros puede venir con keys en undefined (ej. destructuring de req.query
+  // sin que el query param exista), así que no alcanza con mirar Object.keys.
+  const hayFiltros = Object.values(filtros).some((v) => v !== undefined);
+  if (hayFiltros) {
     const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
     return participantes.map((p) => sanitizarParticipante(p, 'admin'));
   }
 
   // Sin filtros → cachear
-  return getOrSet(`participantes:evento:${eventoId}`, async () => {
+  return getOrSet(`evento:${eventoId}`, 'participantes', async () => {
     const participantes = await participantesRepository.listarPorEvento(eventoId, filtros);
     return participantes.map((p) => sanitizarParticipante(p, 'admin'));
   });
@@ -439,7 +441,7 @@ async function obtenerParticipante(id, orgId) {
  * cambiar post-inscripción (cambiar el DNI podría evadir la unicidad del evento).
  */
 async function editarParticipante(id, orgId, datos) {
-  await obtenerParticipante(id, orgId);
+  const participante = await obtenerParticipante(id, orgId);
 
   const datosDb = {};
   if (datos.nombre !== undefined) datosDb.nombre = datos.nombre;
@@ -451,8 +453,9 @@ async function editarParticipante(id, orgId, datos) {
     datosDb.respuestas_form = JSON.stringify(datos.respuestasForm);
   }
 
-  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
-  return participantesRepository.actualizar(id, datosDb);
+  const actualizado = await participantesRepository.actualizar(id, datosDb);
+  invalidar(`evento:${participante.evento_id}`);
+  return actualizado;
 }
 
 /**
@@ -464,8 +467,7 @@ async function eliminarParticipante(id, orgId) {
   const participante = await obtenerParticipante(id, orgId);
   await participantesRepository.eliminar(id);
 
-  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
-  invalidarPorPrefijo(`evento:${participante.evento_id}`);
+  invalidar(`evento:${participante.evento_id}`);
 }
 
 /**
@@ -503,6 +505,7 @@ async function actualizarEstadoVinculo(id, orgId, estado, contexto = {}) {
   }
 
   const actualizado = await participantesRepository.actualizar(id, { estado_vinculo: estado });
+  invalidar(`evento:${participante.evento_id}`);
 
   // Notificar al participante del resultado
   const grupo = await gruposRepository.buscarPorId(participante.grupo_id);
@@ -638,7 +641,7 @@ async function subirAutorizacion(id, orgId, file) {
 
   const url = construirUrlPublica(key);
   await participantesRepository.actualizar(id, { autorizacion_url: url });
-  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+  invalidar(`evento:${participante.evento_id}`);
 
   return { autorizacion_url: url };
 }
@@ -673,7 +676,7 @@ async function subirCertificado(id, orgId, file) {
 
   const url = construirUrlPublica(key);
   await participantesRepository.actualizar(id, { certificado_url: url });
-  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
+  invalidar(`evento:${participante.evento_id}`);
 
   return { certificado_url: url };
 }
@@ -701,8 +704,7 @@ async function actualizarEstadoPago(id, orgId, estadoPago) {
   const evento = await eventosRepository.buscarPorId(participante.evento_id);
 
   await participantesRepository.actualizar(id, { estado_pago: estadoPago });
-  invalidarPorPrefijo(`participantes:evento:${participante.evento_id}`);
-  invalidar(`stats:evento:${participante.evento_id}`);
+  invalidar(`evento:${participante.evento_id}`);
 
   if (estadoPago === 'aprobado') {
     try {

@@ -40,8 +40,7 @@ async function aprobarPago(referenceId, trx = db) {
     .update({ estado: 'aprobado' })
     .returning('*');
 
-  invalidar(`evento:${pago.evento_id}`);
-  invalidar(`admin:stats:${pago.evento_id}`);
+  invalidar(`evento:${pago.evento_id}`, `org:${pago.org_id}`);
   return pago;
 }
 
