@@ -1,4 +1,4 @@
-# Esquema actual de la base (dump automático — 2026-09-10T18:48:44.612Z)
+# Esquema actual de la base (actualizado a mano — 2026-09-15, feature costo por zona)
 
 ## `acreditador_sesion`
 
@@ -235,6 +235,7 @@
 | tiene_grupos | boolean | NO | false |
 | max_grupo | integer | YES |  |
 | tiene_talleres | boolean | NO | false |
+| tiene_precio_por_zona | boolean | NO | false |
 | modo_taller | modo_taller_evento | NO | 'ninguno'::modo_taller_evento |
 | cbu_cvu | character varying(50) | YES |  |
 | alias_cobro | character varying(50) | YES |  |
@@ -471,6 +472,7 @@
 | org_id | uuid | NO |  |
 | evento_id | uuid | NO |  |
 | grupo_id | uuid | YES |  |
+| zona_costo_id | uuid | YES |  |
 | nombre | character varying(100) | NO |  |
 | apellido | character varying(100) | NO |  |
 | email | character varying(255) | YES |  |
@@ -500,6 +502,7 @@
 - `grupo_id` → `grupo.id`
 - `org_id` → `organizacion.id`
 - `responsable_id` → `participante.id`
+- `zona_costo_id` → `zona_costo.id` (ON DELETE SET NULL)
 
 **Índices**:
 - `participante_pkey`: `CREATE UNIQUE INDEX participante_pkey ON public.participante USING btree (id)`
@@ -746,6 +749,29 @@
 **Índices**:
 - `verificacion_email_token_pkey`: `CREATE UNIQUE INDEX verificacion_email_token_pkey ON public.verificacion_email_token USING btree (id)`
 - `verificacion_email_token_usuario_id_usado_index`: `CREATE INDEX verificacion_email_token_usuario_id_usado_index ON public.verificacion_email_token USING btree (usuario_id, usado)`
+
+## `zona_costo`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| org_id | uuid | NO |  |
+| evento_id | uuid | NO |  |
+| nombre | character varying(100) | NO |  |
+| costo | numeric(12,2) | NO |  |
+| orden | integer | NO | 0 |
+
+**PK**: id
+
+**Check**: `chk_zona_costo_costo_positivo`: `CHECK (costo > 0)`
+
+**FKs**:
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
+- `org_id` → `organizacion.id`
+
+**Índices**:
+- `zona_costo_pkey`: `CREATE UNIQUE INDEX zona_costo_pkey ON public.zona_costo USING btree (id)`
+- `idx_zona_costo_org_evento`: `CREATE INDEX idx_zona_costo_org_evento ON public.zona_costo USING btree (org_id, evento_id)`
 
 ## Enums
 
