@@ -21,4 +21,14 @@ const listarComunicacionesSchema = z.object({
   }),
 });
 
-module.exports = { enviarComunicacionSchema, listarComunicacionesSchema };
+const notificarAusentesSchema = z.object({
+  params: z.object({
+    eventoId: z.string().uuid(),
+  }),
+  body: z.object({
+    participanteIds: z.array(z.string().uuid()).min(1, 'Debe incluir al menos un participante'),
+    mensaje: z.string().min(1, 'El mensaje es obligatorio').max(2000),
+  }),
+});
+
+module.exports = { enviarComunicacionSchema, listarComunicacionesSchema, notificarAusentesSchema };

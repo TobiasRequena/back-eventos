@@ -16,6 +16,19 @@ async function enviarComunicacion(req, res, next) {
   }
 }
 
+async function notificarAusentes(req, res, next) {
+  try {
+    const { participanteIds, mensaje } = req.body;
+    const resultado = await comunicacionesService.notificarAusentes(
+      req.params.eventoId,
+      req.orgId,
+      participanteIds,
+      mensaje
+    );
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
 async function listarComunicaciones(req, res, next) {
   try {
     const comunicaciones = await comunicacionesService.listarComunicaciones(
@@ -26,4 +39,4 @@ async function listarComunicaciones(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { enviarComunicacion, listarComunicaciones };  
+module.exports = { enviarComunicacion, notificarAusentes, listarComunicaciones };

@@ -167,9 +167,33 @@ async function enviarComunicacion(eventoId, orgId, usuarioId, datos, archivos = 
   };
 }
 
+async function notificarAusentes(eventoId, orgId, participanteIds, mensaje) {
+  const evento = await verificarEventoDeLaOrg(eventoId, orgId);
+
+  const destinatarios = await db('participante')
+    .whereIn('id', participanteIds)
+    .andWhere({ evento_id: eventoId, activo: true })
+    .whereNotNull('email')
+    .select('email');
+
+  const asunto = `Registramos tu ausencia — ${evento.nombre}`;
+  const html = templateComunicacion({ nombreEvento: evento.nombre, asunto, mensaje: escapeHtml(mensaje) });
+
+  const resultados = await Promise.all(
+    destinatarios.map((p) => enviarMail({
+      to: p.email,
+      subject: asunto,
+      html,
+      from: `${evento.nombre} <comunicaciones@notificaciones.talitaencuentro.com>`,
+    }))
+  );
+
+  return { enviados: resultados.filter((r) => r.ok).length, total: destinatarios.length };
+}
+
 async function listarComunicaciones(eventoId, orgId) {
   await verificarEventoDeLaOrg(eventoId, orgId);
   return getOrSet(`evento:${eventoId}`, 'comunicaciones', () => comunicacionesRepository.listarPorEvento(eventoId));
 }
 
-module.exports = { enviarComunicacion, listarComunicaciones };
+module.exports = { enviarComunicacion, notificarAusentes, listarComunicaciones };

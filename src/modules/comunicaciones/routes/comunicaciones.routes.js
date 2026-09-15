@@ -7,7 +7,7 @@ const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const validate = require('../../../middlewares/validate');
 const parsearFiltros = require('../../../middlewares/parsearFiltros');
-const { enviarComunicacionSchema, listarComunicacionesSchema } = require('../schemas/comunicaciones.schema');
+const { enviarComunicacionSchema, listarComunicacionesSchema, notificarAusentesSchema } = require('../schemas/comunicaciones.schema');
 
 router.use(autenticar);
 router.use(resolverOrganizacionActiva);
@@ -24,6 +24,12 @@ router.get(
   '/',
   validate(listarComunicacionesSchema),
   comunicacionesController.listarComunicaciones
+);
+
+router.post(
+  '/ausentes',
+  validate(notificarAusentesSchema),
+  comunicacionesController.notificarAusentes
 );
 
 module.exports = router;
