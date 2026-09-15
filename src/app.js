@@ -30,6 +30,7 @@ const {
   routerPanel: gruposPanel,
 } = require('./modules/grupos/routes/grupos.routes');
 const routerFormularios = require('./modules/formularios/routes/formularios.routes');
+const routerZonasCosto = require('./modules/zonasCosto/routes/zonasCosto.routes');
 const {
   routerPublico: acreditacionPublico,
   routerProtegido: acreditacionProtegido,
@@ -110,6 +111,9 @@ app.use('/api/v1/grupos', gruposPlano);  // ← plano al final
 
 // Formularios
 app.use('/api/v1/eventos', routerFormularios);
+
+// Zonas de costo
+app.use('/api/v1/eventos', routerZonasCosto);
 
 // Acreditación
 app.use('/api/v1/acreditacion', acreditacionPublico);

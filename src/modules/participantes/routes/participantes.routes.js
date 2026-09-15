@@ -20,7 +20,7 @@ const {
 const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const fichaMedicaController = require('../../fichaMedica/controllers/fichaMedica.controller');
 const { crearFichaMedicaSchema } = require('../../fichaMedica/schemas/fichaMedica.schema');
-const { actualizarEstadoPagoSchema } = require('../schemas/participantes.schema');
+const { actualizarEstadoPagoSchema, actualizarZonaCostoSchema } = require('../schemas/participantes.schema');
 const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
 // Router anidado: GET /eventos/:eventoId/participantes (requiere auth)
@@ -72,6 +72,11 @@ routerPlano.patch(
   '/:id/estado-pago',
   validate(actualizarEstadoPagoSchema),
   participantesController.actualizarEstadoPago
+);
+routerPlano.patch(
+  '/:id/zona-costo',
+  validate(actualizarZonaCostoSchema),
+  participantesController.actualizarZonaCosto
 );
 
 module.exports = { routerAnidado, routerPublico, routerPlano, routerMixto };

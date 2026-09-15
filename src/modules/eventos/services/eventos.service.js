@@ -3,6 +3,7 @@ const { db } = require('../../../config/db');
 const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
+const zonasCostoRepository = require('../../zonasCosto/repositories/zonasCosto.repository');
 const archivosRepository = require('../../archivos/repositories/archivos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const pagosRepository = require('../../pagos/repositories/pagos.repository');
@@ -61,6 +62,7 @@ async function crearEvento(orgId, usuarioId, datos) {
         politicaMenor: datos.politicaMenor,
         tieneGrupos: datos.tieneGrupos,
         tieneTalleres: datos.tieneTalleres,
+        tienePrecioPorZona: datos.tienePrecioPorZona,
         cbuCvu: datos.cbuCvu,
         aliasCobro: datos.aliasCobro,
         costo: datos.costo,
@@ -98,9 +100,17 @@ async function crearEvento(orgId, usuarioId, datos) {
       );
     }
 
+    const zonasCostoCreadas = await zonasCostoRepository.crearVarias(
+      evento.id,
+      orgId,
+      datos.zonasCosto,
+      trx
+    );
+
     return {
       evento,
       camposForm: camposCreados,
+      zonasCosto: zonasCostoCreadas,
       // Informativo para el front: así puede mostrar un aviso tipo
       // "este evento es gratis" o "vas a tener que pagar la creación"
       // sin tener que calcularlo de nuevo del lado del cliente.
@@ -191,13 +201,14 @@ async function obtenerEvento(id, orgId) {
   }
 
   return getOrSet(`evento:${id}`, 'detalle_completo', async () => {
-    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos] = await Promise.all([
+    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos, zonasCosto] = await Promise.all([
       formulariosRepository.listarPorEvento(evento.id),
       talleresRepository.listarBloquesPorEvento(evento.id),
       archivosRepository.buscarPortadaDeEvento(evento.id),
       participantesRepository.contarPorEvento(evento.id),
       pagosRepository.buscarPagoPendientePorEvento(evento.id),
       talleresRepository.listarTalleresSueltosPorEvento(evento.id),
+      zonasCostoRepository.listarPorEvento(evento.id),
     ]);
 
     return {
@@ -205,6 +216,7 @@ async function obtenerEvento(id, orgId) {
       camposForm,
       bloquesTaller,
       talleresSueltos,
+      zonasCosto,
       cantidadInscriptos,
       imagenUrl: construirUrlPublica(portada?.key),
       pagoPlataforma: pagoPendiente
@@ -254,6 +266,7 @@ async function editarEvento(id, orgId, datos) {
   if (datos.politicaMenor !== undefined) datosDb.politica_menor = datos.politicaMenor;
   if (datos.tieneGrupos !== undefined) datosDb.tiene_grupos = datos.tieneGrupos;
   if (datos.tieneTalleres !== undefined) datosDb.tiene_talleres = datos.tieneTalleres;
+  if (datos.tienePrecioPorZona !== undefined) datosDb.tiene_precio_por_zona = datos.tienePrecioPorZona;
   if (datos.cbuCvu !== undefined) datosDb.cbu_cvu = datos.cbuCvu;
   if (datos.aliasCobro !== undefined) datosDb.alias_cobro = datos.aliasCobro;
   if (datos.costo !== undefined) datosDb.costo = datos.costo;
@@ -299,11 +312,12 @@ async function buscarPorCodigoPublico(codigo) {
   // porque el formulario de inscripción necesita esos datos para renderizarse.
   // No traemos cantidadInscriptos ni imagenUrl porque este endpoint es público
   // y no necesita esos datos para el flujo de inscripción.
-  const [camposForm, bloquesTaller, portada, talleresSueltos] = await Promise.all([
+  const [camposForm, bloquesTaller, portada, talleresSueltos, zonasCosto] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
     talleresRepository.listarTalleresSueltosPorEvento(evento.id),
+    zonasCostoRepository.listarPorEvento(evento.id),
   ]);
 
   return {
@@ -312,6 +326,7 @@ async function buscarPorCodigoPublico(codigo) {
     camposForm,
     bloquesTaller,
     talleresSueltos,
+    zonasCosto,
   };
 }
 
@@ -494,6 +509,8 @@ async function generarExcelInscriptos(id, orgId) {
     { header: 'Estado de pago', key: 'estado_pago' },
     // Solo si tiene grupos
     ...(evento.tiene_grupos ? [{ header: 'Grupo', key: 'grupo_nombre' }] : []),
+    // Solo si el evento usa precio por zona
+    ...(evento.tiene_precio_por_zona ? [{ header: 'Zona', key: 'zona_nombre' }] : []),
     { header: 'Acreditado', key: 'acreditado' },
     // Solo si tiene talleres
     ...(evento.tiene_talleres ? [{ header: 'Talleres', key: 'talleres' }] : []),
@@ -547,6 +564,8 @@ async function generarExcelInscriptos(id, orgId) {
       estado_pago: ESTADO_PAGO_LABELS[p.estado_pago] ?? p.estado_pago,
       // Solo si tiene grupos
       ...(evento.tiene_grupos ? { grupo_nombre: p.grupo_nombre ?? 'Individual' } : {}),
+      // Solo si el evento usa precio por zona
+      ...(evento.tiene_precio_por_zona ? { zona_nombre: p.zona_nombre ?? '—' } : {}),
       acreditado: p.acreditado ? 'Sí' : 'No',
       // Solo si tiene talleres — todos los talleres separados por ' / '
       ...(evento.tiene_talleres ? { talleres: p.talleres.join(' / ') } : {}),

@@ -44,6 +44,7 @@ async function crear(datos, trx = db) {
       cupo_maximo: datos.cupoMaximo ?? null,
       tiene_grupos: datos.tieneGrupos,
       tiene_talleres: datos.tieneTalleres,
+      tiene_precio_por_zona: datos.tienePrecioPorZona ?? false,
       cbu_cvu: datos.cbuCvu ?? null,
       alias_cobro: datos.aliasCobro ?? null,
       costo: datos.costo,
@@ -129,11 +130,13 @@ async function listarInscriptosCompleto(eventoId) {
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .leftJoin('zona_costo', 'zona_costo.id', 'participante.zona_costo_id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', true)
     .select(
       'participante.*',
       'grupo.nombre as grupo_nombre',
+      'zona_costo.nombre as zona_nombre',
       db.raw('(checkin.id IS NOT NULL) as acreditado'),
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),

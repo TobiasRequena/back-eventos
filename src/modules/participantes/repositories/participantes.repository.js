@@ -18,6 +18,7 @@ async function buscarPorId(id, trx = db) {
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
+    .leftJoin('zona_costo', 'zona_costo.id', 'participante.zona_costo_id')
     .where('participante.id', id)
     .select(
       'participante.*',
@@ -29,6 +30,7 @@ async function buscarPorId(id, trx = db) {
       'acreditador_sesion.nombre as acreditador_nombre',
       'acreditador_sesion.apellido as acreditador_apellido',
       'grupo.nombre as grupo_nombre',
+      'zona_costo.nombre as zona_nombre',
     )
     .first();
 }
@@ -50,6 +52,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .leftJoin('zona_costo', 'zona_costo.id', 'participante.zona_costo_id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', true)
     .select(
@@ -58,6 +61,11 @@ async function listarPorEvento(eventoId, filtros = {}) {
         CASE WHEN participante.grupo_id IS NOT NULL
         THEN json_build_object('id', grupo.id, 'nombre', grupo.nombre)
         ELSE NULL END as grupo
+      `),
+      db.raw(`
+        CASE WHEN participante.zona_costo_id IS NOT NULL
+        THEN json_build_object('id', zona_costo.id, 'nombre', zona_costo.nombre)
+        ELSE NULL END as zona
       `),
       db.raw('(checkin.id IS NOT NULL) as acreditado'),
       'checkin.momento as acreditado_en',
@@ -75,6 +83,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
   if (filtros.rolGrupo) query.andWhere('participante.rol_grupo', filtros.rolGrupo);
   if (filtros.estadoPago) query.andWhere('participante.estado_pago', filtros.estadoPago);
   if (filtros.estadoVinculo) query.andWhere('participante.estado_vinculo', filtros.estadoVinculo);
+  if (filtros.zonaCostoId) query.andWhere('participante.zona_costo_id', filtros.zonaCostoId);
 
   return query.orderBy('participante.creado_en', 'asc');
 }
@@ -130,6 +139,7 @@ async function crear(datos, trx = db) {
         respuestas_form: JSON.stringify(datos.respuestasForm ?? {}),
         estado_pago: datos.estadoPago ?? 'no_aplica',
         pagado_por: datos.pagadoPor ?? null,
+        zona_costo_id: datos.zonaCostoId ?? null,
         qr_personal: datos.qrPersonal,
       })
       .returning('*');
@@ -195,8 +205,20 @@ async function buscarPorIds(ids, trx = db) {
 async function buscarPorDniYEvento(dni, eventoId) {
   const hash = hashDni(dni);
   return db('participante')
-    .where({ dni_hash: hash, evento_id: eventoId, activo: true })
-    .select('id', 'nombre', 'apellido', 'estado_pago')
+    .leftJoin('zona_costo', 'zona_costo.id', 'participante.zona_costo_id')
+    .where({
+      'participante.dni_hash': hash,
+      'participante.evento_id': eventoId,
+      'participante.activo': true,
+    })
+    .select(
+      'participante.id',
+      'participante.nombre',
+      'participante.apellido',
+      'participante.estado_pago',
+      'zona_costo.nombre as zona_nombre',
+      'zona_costo.costo as zona_costo'
+    )
     .first();
 }
 

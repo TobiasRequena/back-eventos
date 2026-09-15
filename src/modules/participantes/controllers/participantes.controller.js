@@ -210,6 +210,17 @@ async function actualizarEstadoPago(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function actualizarZonaCosto(req, res, next) {
+  try {
+    const resultado = await participantesService.actualizarZonaCosto(
+      req.params.id,
+      req.orgId,
+      req.body.zonaCostoId
+    );
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   crear,
   listar,
@@ -224,5 +235,6 @@ module.exports = {
   subirAutorizacion,
   subirCertificado,
   verificarDni,
-  actualizarEstadoPago
+  actualizarEstadoPago,
+  actualizarZonaCosto
 };

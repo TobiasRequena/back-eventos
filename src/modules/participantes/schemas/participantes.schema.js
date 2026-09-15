@@ -30,6 +30,7 @@ const crearParticipanteSchema = z.object({
 
     tallerIds: z.array(z.string().uuid()).optional().default([]),
     estadoPago: z.enum(['pendiente', 'aprobado', 'no_aplica', 'rechazado']).optional(),
+    zonaCostoId: z.string().uuid('zonaCostoId inválido').nullable().optional(),
 
     // Respuestas al formulario dinámico del evento
     // Objeto libre: { [campo_form_id]: valor }
@@ -87,6 +88,15 @@ const actualizarEstadoPagoSchema = z.object({
   }),
 });
 
+const actualizarZonaCostoSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Id de participante inválido'),
+  }),
+  body: z.object({
+    zonaCostoId: z.string().uuid('zonaCostoId inválido').nullable(),
+  }),
+});
+
 module.exports = {
   crearParticipanteSchema,
   editarParticipanteSchema,
@@ -98,4 +108,5 @@ module.exports = {
   PAGADO_POR,
   reenviarMailSchema,
   actualizarEstadoPagoSchema,
+  actualizarZonaCostoSchema,
 };

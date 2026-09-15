@@ -8,6 +8,7 @@ const eventosRepository = require('../../eventos/repositories/eventos.repository
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
 const gruposRepository = require('../../grupos/repositories/grupos.repository');
+const zonasCostoRepository = require('../../zonasCosto/repositories/zonasCosto.repository');
 
 const { enviarMail } = require('../../../utils/mail');
 const {
@@ -201,8 +202,27 @@ async function crearParticipante(orgId, datos) {
       validarRespuestasForm(campos, datos.respuestasForm ?? {});
     }
 
-    // 6. Determinar estado de pago inicial
-    const estadoPago = evento.costo > 0 ? datos.estadoPago : 'no_aplica';
+    // 6. Resolver el costo a cobrar (por zona si el evento lo usa, RN de zona_costo)
+    // y determinar el estado de pago inicial. No se guarda un snapshot del monto
+    // en participante — se resuelve al vuelo, igual que evento.costo hasta ahora.
+    let costoAPagar = evento.costo;
+    let zonaCostoId = null;
+    if (evento.tiene_precio_por_zona) {
+      if (!datos.zonaCostoId) {
+        const error = new Error('Debés seleccionar una zona de costo para inscribirte');
+        error.status = 400;
+        throw error;
+      }
+      const zonaCosto = await zonasCostoRepository.buscarPorId(datos.zonaCostoId, trx);
+      if (!zonaCosto || zonaCosto.evento_id !== datos.eventoId) {
+        const error = new Error('La zona de costo seleccionada no es válida para este evento');
+        error.status = 400;
+        throw error;
+      }
+      costoAPagar = zonaCosto.costo;
+      zonaCostoId = zonaCosto.id;
+    }
+    const estadoPago = costoAPagar > 0 ? datos.estadoPago : 'no_aplica';
 
     // 7. Determinar estado_vinculo según rol
     let estadoVinculo = null;
@@ -233,6 +253,7 @@ async function crearParticipante(orgId, datos) {
         responsableId: datos.responsableId,
         respuestasForm: datos.respuestasForm ?? {},
         estadoPago,
+        zonaCostoId,
         qrPersonal,
       },
       trx
@@ -336,7 +357,7 @@ async function crearParticipante(orgId, datos) {
 
         const participanteActualizado = await participantesRepository.buscarPorId(participante.id);
 
-        if (evento.costo == 0 || evento.costo === null) {
+        if (costoAPagar == 0 || costoAPagar === null) {
           const credencialBuffer = await generarCredencial({
             qrPersonal: datosParaMail.qrPersonal,
             nombreEvento: evento.nombre,
@@ -697,6 +718,9 @@ async function verificarDniEnEvento(dni, eventoId) {
     nombre: participante.nombre,
     apellido: participante.apellido,
     estadoPago: participante.estado_pago,
+    zona: participante.zona_nombre
+      ? { nombre: participante.zona_nombre, costo: participante.zona_costo }
+      : null,
   };
 }
 
@@ -758,6 +782,29 @@ async function actualizarEstadoPago(id, orgId, estadoPago) {
   return { ok: true, estadoPago };
 }
 
+/**
+ * Corrige la zona de costo autodeclarada por el participante. La usa el Admin
+ * desde el panel de revisión de pagos cuando el comprobante no coincide con
+ * lo que el participante eligió al inscribirse. UPDATE de aplicación, sin
+ * estado propio (mismo criterio que RN04) — no dispara recálculo de estado_pago.
+ */
+async function actualizarZonaCosto(id, orgId, zonaCostoId) {
+  const participante = await obtenerParticipante(id, orgId);
+
+  if (zonaCostoId) {
+    const zonaCosto = await zonasCostoRepository.buscarPorId(zonaCostoId);
+    if (!zonaCosto || zonaCosto.evento_id !== participante.evento_id) {
+      const error = new Error('La zona de costo seleccionada no es válida para este evento');
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  const actualizado = await participantesRepository.actualizar(id, { zona_costo_id: zonaCostoId });
+  invalidar(`evento:${participante.evento_id}`);
+  return sanitizarParticipante(actualizado, 'admin');
+}
+
 module.exports = {
   crearParticipante,
   listarParticipantes,
@@ -773,5 +820,6 @@ module.exports = {
   subirAutorizacion,
   subirCertificado,
   verificarDniEnEvento,
-  actualizarEstadoPago
+  actualizarEstadoPago,
+  actualizarZonaCosto
 };
