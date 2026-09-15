@@ -51,6 +51,7 @@ async function buscarPortadaDeEvento(eventoId, trx = db) {
     .where({ evento_id: eventoId })
     .whereNull('participante_id')
     .whereRaw("key LIKE 'portada_evento/%'")
+    .orderBy('creado_en', 'desc')
     .first();
   return resultado;
 }

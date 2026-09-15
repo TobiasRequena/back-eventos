@@ -79,12 +79,12 @@ async function subirArchivo(buffer, metadata, datos) {
     throw error;
   }
 
-  // Si es portada de evento, borramos la anterior antes de subir la nueva
+  // Si es portada de evento, guardamos la anterior para borrarla recién
+  // cuando la nueva ya esté subida y confirmada (si subir la nueva falla,
+  // no nos quedamos sin portada).
+  let portadaVieja = null;
   if (datos.contexto === 'portada_evento' && datos.eventoId) {
-    const portadaVieja = await archivosRepository.buscarPortadaDeEvento(datos.eventoId);
-    if (portadaVieja) {
-      await _eliminarArchivoFisico(portadaVieja);
-    }
+    portadaVieja = await archivosRepository.buscarPortadaDeEvento(datos.eventoId);
   }
 
   // Optimizar si es imagen (no aplicamos a PDFs)
@@ -121,6 +121,9 @@ async function subirArchivo(buffer, metadata, datos) {
   });
 
   if (datos.contexto === 'portada_evento') {
+    if (portadaVieja) {
+      await _eliminarArchivoFisico(portadaVieja);
+    }
     invalidar(`evento:${datos.eventoId}`, `org:${datos.orgId}`);
   }
 
