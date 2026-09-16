@@ -158,6 +158,28 @@ async function reenviarMail(req, res, next) {
   }
 }
 
+/**
+ * POST /api/v1/eventos/:eventoId/participantes/lista-pdf
+ * Genera un PDF con el resultado de "pasar lista" (presentes/ausentes)
+ * hecho en el front. No persiste nada en la base.
+ */
+async function descargarListaPdf(req, res, next) {
+  try {
+    const { buffer, nombreArchivo } = await participantesService.generarListaPdf(
+      req.params.eventoId,
+      req.orgId,
+      req.body.registros,
+      req.body.filtros ?? {}
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function listarEliminados(req, res, next) {
   try {
     const participantes = await participantesService.listarEliminados(
@@ -236,5 +258,6 @@ module.exports = {
   subirCertificado,
   verificarDni,
   actualizarEstadoPago,
-  actualizarZonaCosto
+  actualizarZonaCosto,
+  descargarListaPdf,
 };

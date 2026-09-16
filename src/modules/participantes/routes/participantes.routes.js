@@ -16,6 +16,7 @@ const {
   editarParticipanteSchema,
   idParamSchema,
   actualizarEstadoVinculoSchema,
+  listaPdfSchema,
 } = require('../schemas/participantes.schema');
 const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const fichaMedicaController = require('../../fichaMedica/controllers/fichaMedica.controller');
@@ -28,6 +29,11 @@ const routerAnidado = express.Router({ mergeParams: true });
 routerAnidado.use(autenticar);
 routerAnidado.use(resolverOrganizacionActiva);
 routerAnidado.get('/:eventoId/participantes/eliminados', verificarPagoPendiente, participantesController.listarEliminados);
+routerAnidado.post(
+  '/:eventoId/participantes/lista-pdf',
+  validate(listaPdfSchema),
+  participantesController.descargarListaPdf
+);
 routerAnidado.get('/:eventoId/participantes', verificarPagoPendiente, participantesController.listar);
 
 // Router público: inscripción externa y subida de documentación post-inscripción (sin auth obligatoria)
