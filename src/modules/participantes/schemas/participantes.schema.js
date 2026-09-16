@@ -97,6 +97,24 @@ const actualizarZonaCostoSchema = z.object({
   }),
 });
 
+const listaPdfSchema = z.object({
+  params: z.object({
+    eventoId: z.string().uuid('eventoId inválido'),
+  }),
+  body: z.object({
+    registros: z
+      .array(
+        z.object({
+          participanteId: z.string().uuid('participanteId inválido'),
+          estado: z.enum(['presente', 'ausente']),
+        })
+      )
+      .min(1, 'Debe enviar al menos un registro'),
+    // Datos de los filtros aplicados en el front, solo para mostrar en la cabecera del PDF
+    filtros: z.record(z.string()).optional(),
+  }),
+});
+
 module.exports = {
   crearParticipanteSchema,
   editarParticipanteSchema,
@@ -109,4 +127,5 @@ module.exports = {
   reenviarMailSchema,
   actualizarEstadoPagoSchema,
   actualizarZonaCostoSchema,
+  listaPdfSchema,
 };

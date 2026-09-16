@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const PDFDocument = require('pdfkit');
 const { db } = require('../../../config/db');
 const s3Client = require('../../../config/s3');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
@@ -620,6 +621,155 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
   });
 }
 
+/**
+ * Genera el PDF de "pasar lista" (presentes/ausentes) para un evento.
+ * No persiste nada — es una foto del pase de lista hecho en el front.
+ */
+async function generarListaPdf(eventoId, orgId, registros, filtros = {}) {
+  const evento = await buscarEventoCacheado(eventoId);
+  if (!evento) {
+    const error = new Error('Evento no encontrado'); error.status = 404; throw error;
+  }
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento'); error.status = 403; throw error;
+  }
+
+  const ids = registros.map((r) => r.participanteId);
+  const participantes = await participantesRepository.buscarPorIds(ids);
+  const estadoPorId = new Map(registros.map((r) => [r.participanteId, r.estado]));
+
+  const filas = participantes
+    .filter((p) => p.evento_id === eventoId)
+    .map((p) => {
+      let dniLegible = p.dni;
+      try { dniLegible = desencriptar(p.dni); } catch { }
+      return {
+        apellido: p.apellido,
+        nombre: p.nombre,
+        dni: dniLegible,
+        estado: estadoPorId.get(p.id) === 'presente' ? 'Presente' : 'Ausente',
+      };
+    })
+    .sort((a, b) => a.apellido.localeCompare(b.apellido) || a.nombre.localeCompare(b.nombre));
+
+  // Labels legibles para los filtros conocidos que puede mandar el front.
+  // Los "campo_<id>" son respuestas a campos dinámicos del formulario —
+  // ahí sí hay que ir a buscar la etiqueta real a campo_form.
+  const LABELS_FILTROS = {
+    universo: 'Universo',
+    checkin: 'Acreditado',
+    pago: 'Estado de pago',
+    edad: 'Edad',
+    grupo: 'Grupo',
+  };
+
+  function formatearValorFiltro(key, valor) {
+    if (key === 'checkin') {
+      return String(valor).toLowerCase() === 'ausente' ? 'No' : 'Sí';
+    }
+    return valor;
+  }
+
+  const idsCampoDinamico = Object.keys(filtros)
+    .filter((k) => k.startsWith('campo_'))
+    .map((k) => k.slice('campo_'.length));
+  const labelsCampoDinamico = {};
+  if (idsCampoDinamico.length > 0) {
+    const campos = await formulariosRepository.listarPorEvento(eventoId);
+    for (const campo of campos) {
+      if (idsCampoDinamico.includes(campo.id)) {
+        labelsCampoDinamico[`campo_${campo.id}`] = campo.etiqueta;
+      }
+    }
+  }
+
+  function formatearLabelFiltro(key) {
+    return labelsCampoDinamico[key]
+      ?? LABELS_FILTROS[key]
+      ?? key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  }
+
+  const filtrosTexto = Object.entries(filtros)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${formatearLabelFiltro(k)}: ${formatearValorFiltro(k, v)}`);
+
+  const buffer = await new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const izq = doc.page.margins.left;
+    const anchoPagina = doc.page.width - izq - doc.page.margins.right;
+    const columnas = [
+      { label: 'Apellido', key: 'apellido', x: izq, width: anchoPagina * 0.28 },
+      { label: 'Nombre', key: 'nombre', x: izq + anchoPagina * 0.28, width: anchoPagina * 0.28 },
+      { label: 'DNI', key: 'dni', x: izq + anchoPagina * 0.56, width: anchoPagina * 0.22 },
+      { label: 'Estado', key: 'estado', x: izq + anchoPagina * 0.78, width: anchoPagina * 0.22 },
+    ];
+
+    // ===== Cabecera: título a la izquierda, fecha a la derecha, misma línea =====
+    let y = doc.y;
+    doc.font('Helvetica-Bold').fontSize(16)
+      .text(evento.nombre, izq, y, { width: anchoPagina * 0.7 });
+    doc.font('Helvetica').fontSize(10)
+      .text(new Date().toLocaleDateString('es-AR'), izq, y + 4, { width: anchoPagina, align: 'right' });
+    y += 24;
+
+    // ===== Filtros, en grilla de 3 por fila =====
+    if (filtrosTexto.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(10).text('Filtros', izq, y);
+      y += 15;
+      doc.font('Helvetica').fontSize(9);
+      const POR_FILA = 3;
+      const anchoChip = anchoPagina / POR_FILA;
+      for (let i = 0; i < filtrosTexto.length; i += POR_FILA) {
+        const fila = filtrosTexto.slice(i, i + POR_FILA);
+        fila.forEach((texto, j) => {
+          doc.text(texto, izq + j * anchoChip, y, { width: anchoChip - 10 });
+        });
+        y += 14;
+      }
+      y += 6;
+    }
+
+    const alturaFila = 20;
+
+    function dibujarEncabezadoTabla() {
+      doc.font('Helvetica-Bold').fontSize(10);
+      columnas.forEach((col) => doc.text(col.label, col.x, y, { width: col.width }));
+      y += 16;
+      doc.moveTo(izq, y).lineTo(izq + anchoPagina, y).stroke();
+      y += 8;
+      doc.font('Helvetica').fontSize(10);
+    }
+
+    dibujarEncabezadoTabla();
+
+    if (filas.length === 0) {
+      doc.fontSize(10).text('No hay participantes para mostrar.', izq, y);
+    }
+
+    filas.forEach((fila) => {
+      if (y + alturaFila > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+        y = doc.page.margins.top;
+        dibujarEncabezadoTabla();
+      }
+      columnas.forEach((col) => doc.text(fila[col.key], col.x, y, { width: col.width }));
+      y += alturaFila;
+    });
+
+    doc.end();
+  });
+
+  return {
+    buffer,
+    nombreArchivo: `lista_asistencia_${evento.codigo}.pdf`,
+  };
+}
+
 async function listarEliminados(eventoId, orgId) {
   const evento = await buscarEventoCacheado(eventoId);
   if (!evento) {
@@ -821,5 +971,6 @@ module.exports = {
   subirCertificado,
   verificarDniEnEvento,
   actualizarEstadoPago,
-  actualizarZonaCosto
+  actualizarZonaCosto,
+  generarListaPdf,
 };
