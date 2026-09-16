@@ -656,7 +656,7 @@ async function generarListaPdf(eventoId, orgId, registros, filtros = {}) {
   // Los "campo_<id>" son respuestas a campos dinámicos del formulario —
   // ahí sí hay que ir a buscar la etiqueta real a campo_form.
   const LABELS_FILTROS = {
-    universo: 'Universo',
+    universo: 'Participantes',
     checkin: 'Acreditado',
     pago: 'Estado de pago',
     edad: 'Edad',
