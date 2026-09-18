@@ -15,6 +15,7 @@ async function buscarPorDniEnEvento(dni, eventoId, trx = db) {
 async function buscarPorId(id, trx = db) {
   return trx('participante')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .leftJoin('contacto_emergencia', 'contacto_emergencia.participante_id', 'participante.id')
     .leftJoin('grupo', 'grupo.id', 'participante.grupo_id')
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
@@ -23,6 +24,7 @@ async function buscarPorId(id, trx = db) {
     .select(
       'participante.*',
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(contacto_emergencia.id IS NOT NULL) as tiene_contacto_emergencia'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
       db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado'),
       db.raw('(checkin.id IS NOT NULL) as acreditado'),
@@ -52,6 +54,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
     .leftJoin('checkin', 'checkin.participante_id', 'participante.id')
     .leftJoin('acreditador_sesion', 'acreditador_sesion.id', 'checkin.acreditador_id')
     .leftJoin('ficha_medica', 'ficha_medica.participante_id', 'participante.id')
+    .leftJoin('contacto_emergencia', 'contacto_emergencia.participante_id', 'participante.id')
     .leftJoin('zona_costo', 'zona_costo.id', 'participante.zona_costo_id')
     .where('participante.evento_id', eventoId)
     .where('participante.activo', true)
@@ -75,6 +78,7 @@ async function listarPorEvento(eventoId, filtros = {}) {
         ELSE NULL END as acreditador
       `),
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
+      db.raw('(contacto_emergencia.id IS NOT NULL) as tiene_contacto_emergencia'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
       db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
     );

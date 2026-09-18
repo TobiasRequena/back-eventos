@@ -3,6 +3,7 @@ const calcularEdad = require('./calcularEdad');
 
 function sanitizarParticipante(participante, contexto = 'admin') {
   const tieneFicha = Boolean(participante.tiene_ficha_medica);
+  const tieneContactoEmergencia = Boolean(participante.tiene_contacto_emergencia);
   const tieneAuto = Boolean(participante.tiene_autorizacion || participante.autorizacion_url);
   const tieneCert = Boolean(participante.tiene_certificado || participante.certificado_url);
 
@@ -24,6 +25,7 @@ function sanitizarParticipante(participante, contexto = 'admin') {
       dni: dniLegible,
       edad: calcularEdad(participante.nacimiento),
       tiene_ficha_medica: tieneFicha,
+      tiene_contacto_emergencia: tieneContactoEmergencia,
       tiene_autorizacion: tieneAuto,
       tiene_certificado: tieneCert,
       acreditado: participante.acreditado ?? false,
