@@ -21,6 +21,7 @@ const {
 const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const fichaMedicaController = require('../../fichaMedica/controllers/fichaMedica.controller');
 const { crearFichaMedicaSchema } = require('../../fichaMedica/schemas/fichaMedica.schema');
+const contactoEmergenciaController = require('../../contactoEmergencia/controllers/contactoEmergencia.controller');
 const { actualizarEstadoPagoSchema, actualizarZonaCostoSchema } = require('../schemas/participantes.schema');
 const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
@@ -74,6 +75,7 @@ routerPlano.patch('/:id/autorizacion', upload.single('archivo'), participantesCo
 routerPlano.patch('/:id/certificado', upload.single('archivo'), participantesController.subirCertificado);
 routerPlano.get('/:id/ficha-medica', autenticar, resolverOrganizacionActiva, fichaMedicaController.obtenerFicha);
 routerPlano.patch('/:id/ficha-medica', autenticar, resolverOrganizacionActiva, validate(crearFichaMedicaSchema), fichaMedicaController.guardarFicha);
+routerPlano.get('/:id/contacto-emergencia', autenticar, resolverOrganizacionActiva, contactoEmergenciaController.obtenerContacto);
 routerPlano.patch(
   '/:id/estado-pago',
   validate(actualizarEstadoPagoSchema),
