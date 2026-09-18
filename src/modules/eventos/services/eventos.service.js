@@ -71,6 +71,7 @@ async function crearEvento(orgId, usuarioId, datos) {
         configFichaMedica: datos.configFichaMedica,
         configCertificado: datos.configCertificado,
         autorizacionTemplateUrl: datos.autorizacionTemplateUrl,
+        solicitaContactoEmergencia: datos.solicitaContactoEmergencia,
       },
       trx
     );
@@ -276,6 +277,7 @@ async function editarEvento(id, orgId, datos) {
   if (datos.configFichaMedica !== undefined) datosDb.config_ficha_medica = datos.configFichaMedica;
   if (datos.configCertificado !== undefined) datosDb.config_certificado = datos.configCertificado;
   if (datos.autorizacionTemplateUrl !== undefined) datosDb.autorizacion_template_url = datos.autorizacionTemplateUrl;
+  if (datos.solicitaContactoEmergencia !== undefined) datosDb.solicita_contacto_emergencia = datos.solicitaContactoEmergencia;
 
   const eventoActualizado = await eventosRepository.actualizar(id, datosDb);
   invalidar(`evento:${id}`, `org:${orgId}`);
@@ -719,6 +721,14 @@ async function listarFichasMedicas(id, orgId) {
   return getOrSet(`evento:${id}`, 'fichas_medicas', () => eventosRepository.listarFichasMedicasRelevantes(id));
 }
 
+async function listarContactosEmergencia(id, orgId) {
+  const evento = await eventosRepository.buscarPorId(id);
+  if (!evento) { const error = new Error('Evento no encontrado'); error.status = 404; throw error; }
+  if (evento.org_id !== orgId) { const error = new Error('No tenés permisos'); error.status = 403; throw error; }
+
+  return getOrSet(`evento:${id}`, 'contactos_emergencia', () => eventosRepository.listarContactosEmergencia(id));
+}
+
 module.exports = {
   crearEvento,
   listarEventos,
@@ -733,4 +743,5 @@ module.exports = {
   eventoEstaCerrado,
   listarPendientesPago,
   listarFichasMedicas,
+  listarContactosEmergencia,
 };

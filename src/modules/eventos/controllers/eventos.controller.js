@@ -144,6 +144,13 @@ async function listarFichasMedicas(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function listarContactosEmergencia(req, res, next) {
+  try {
+    const contactos = await eventosService.listarContactosEmergencia(req.params.id, req.orgId);
+    res.status(200).json({ contactos });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   crear,
   listar,
@@ -156,5 +163,6 @@ module.exports = {
   descargarExcel,
   statsInscripciones,
   listarPendientesPago,
-  listarFichasMedicas
+  listarFichasMedicas,
+  listarContactosEmergencia
 };

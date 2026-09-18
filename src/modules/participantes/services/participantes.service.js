@@ -25,6 +25,7 @@ const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
 const { getOrSet, invalidar } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
+const contactoEmergenciaRepository = require('../../contactoEmergencia/repositories/contactoEmergencia.repository');
 const calcularEdad = require('../../../utils/calcularEdad');
 const sanitizarParticipante = require('../../../utils/sanitizarParticipante');
 
@@ -122,6 +123,12 @@ function fichaMedicaRequerida(configFichaMedica, esMenor) {
   return false;
 }
 
+// El contacto de emergencia, cuando el evento lo solicita, es obligatorio
+// solo para menores — para mayores queda a criterio del participante.
+function contactoEmergenciaRequerido(solicitaContactoEmergencia, esMenor) {
+  return Boolean(solicitaContactoEmergencia) && esMenor;
+}
+
 /**
  * Crea un participante nuevo en un evento.
  *
@@ -164,6 +171,10 @@ async function crearParticipante(orgId, datos) {
     const esMenor = calcularEdad(datos.nacimiento) < 18;
     if (fichaMedicaRequerida(evento.config_ficha_medica, esMenor) && !datos.fichaMedica) {
       const error = new Error('La ficha médica es obligatoria para inscribirse en este evento');
+      error.status = 400; throw error;
+    }
+    if (contactoEmergenciaRequerido(evento.solicita_contacto_emergencia, esMenor) && !datos.contactoEmergencia) {
+      const error = new Error('El contacto de emergencia es obligatorio para menores en este evento');
       error.status = 400; throw error;
     }
 
@@ -291,6 +302,17 @@ async function crearParticipante(orgId, datos) {
         console.error('[ficha] error al crear:', err.message);
         throw err;
       }
+    }
+
+    if (datos.contactoEmergencia) {
+      await contactoEmergenciaRepository.crear({
+        org_id: orgIdFinal,
+        evento_id: datos.eventoId,
+        participante_id: participante.id,
+        nombre: datos.contactoEmergencia.nombre,
+        telefono: datos.contactoEmergencia.telefono,
+        parentesco: datos.contactoEmergencia.parentesco || null,
+      }, trx);
     }
 
     // 9. Inscribir a los talleres elegidos (si vinieron)
