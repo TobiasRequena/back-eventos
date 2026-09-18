@@ -50,6 +50,7 @@ const crearEventoSchema = z.object({
       configFichaMedica: z.string().optional().default('no'),
       configCertificado: z.string().optional().default('no'),
       autorizacionTemplateUrl: z.string().nullable().optional(),
+      solicitaContactoEmergencia: z.boolean().optional().default(false),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
       message: 'fechaFin debe ser igual o posterior a fechaInicio',
@@ -85,6 +86,7 @@ const editarEventoSchema = z.object({
     configFichaMedica: z.string().optional(),
     configCertificado: z.string().optional(),
     autorizacionTemplateUrl: z.string().nullable().optional(),
+    solicitaContactoEmergencia: z.boolean().optional(),
   }),
 });
 
