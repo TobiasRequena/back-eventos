@@ -197,9 +197,9 @@
 **PK**: id
 
 **FKs**:
-- `evento_id` → `evento.id`
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
 - `org_id` → `organizacion.id`
-- `participante_id` → `participante.id`
+- `participante_id` → `participante.id` (ON DELETE CASCADE)
 
 **Índices**:
 - `contacto_emergencia_pkey`: `CREATE UNIQUE INDEX contacto_emergencia_pkey ON public.contacto_emergencia USING btree (id)`
@@ -452,6 +452,10 @@
 | configuracion | jsonb | NO | '{}'::jsonb |
 | estado_facturacion | character varying(30) | NO | 'al_dia'::character varying |
 | creado_en | timestamp with time zone | NO | now() |
+| sitio_web | character varying(255) | SÍ |  |
+| instagram | character varying(30) | SÍ |  |
+| twitter | character varying(15) | SÍ |  |
+| facebook | character varying(50) | SÍ |  |
 
 **PK**: id
 

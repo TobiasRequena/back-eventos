@@ -20,9 +20,15 @@ async function listarMias(req, res, next) {
 async function completar(req, res, next) {
   try {
     const { id } = req.params;
-    const { nombre } = req.body;
+    const { nombre, sitioWeb, instagram, twitter, facebook } = req.body;
 
-    const organizacion = await organizacionesService.completarOrganizacion(id, { nombre });
+    const organizacion = await organizacionesService.completarOrganizacion(id, {
+      nombre,
+      sitioWeb,
+      instagram,
+      twitter,
+      facebook,
+    });
 
     res.status(200).json({ organizacion });
   } catch (error) {

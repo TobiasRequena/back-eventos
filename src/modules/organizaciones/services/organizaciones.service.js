@@ -8,7 +8,7 @@ const authRepository = require('../../auth/repositories/auth.repository');
  * organización que ya estaba completa — no hay necesidad de dos funciones
  * distintas para eso, el UPDATE es el mismo.
  */
-async function completarOrganizacion(orgId, { nombre }, trx) {
+async function completarOrganizacion(orgId, { nombre, ...redes }, trx) {
   const organizacion = await organizacionesRepository.buscarPorId(orgId, trx);
 
   if (!organizacion) {
@@ -17,7 +17,7 @@ async function completarOrganizacion(orgId, { nombre }, trx) {
     throw error;
   }
 
-  return organizacionesRepository.actualizar(orgId, { nombre, esImplicita: false }, trx);
+  return organizacionesRepository.actualizar(orgId, { nombre, esImplicita: false, ...redes }, trx);
 }
 
 /**
