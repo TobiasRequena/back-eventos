@@ -32,12 +32,17 @@ async function listarPorUsuario(usuarioId) {
  * Actualiza nombre y es_implicita de una organización.
  * Se usa en completarOrganizacion del service.
  */
-async function actualizar(id, { nombre, esImplicita }, trx = db) {
+async function actualizar(id, { nombre, esImplicita, sitioWeb, instagram, twitter, facebook }, trx = db) {
+  // undefined = no tocar la columna (knex lo ignora), null = borrarla.
   const [organizacion] = await trx('organizacion')
     .where({ id })
     .update({
       nombre,
       es_implicita: esImplicita,
+      sitio_web: sitioWeb,
+      instagram,
+      twitter,
+      facebook,
     })
     .returning('*');
 

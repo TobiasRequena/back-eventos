@@ -68,7 +68,14 @@ async function registrar({ nombre, apellido, email, contrasena, organizacion }) 
     );
 
     const org = await authRepository.crearOrganizacion(
-      { nombre: nombreOrganizacion, esImplicita },
+      {
+        nombre: nombreOrganizacion,
+        esImplicita,
+        sitioWeb: organizacion?.sitioWeb,
+        instagram: organizacion?.instagram,
+        twitter: organizacion?.twitter,
+        facebook: organizacion?.facebook,
+      },
       trx
     );
 

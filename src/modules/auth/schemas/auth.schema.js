@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { redesShape } = require('../../organizaciones/schemas/organizaciones.schema');
 
 const registerSchema = z.object({
     body: z.object({
@@ -9,6 +10,7 @@ const registerSchema = z.object({
         organizacion: z
             .object({
                 nombre: z.string().min(1, 'El nombre de la organización es obligatorio').max(150),
+                ...redesShape,
             })
             .optional(),
     }),
