@@ -13,6 +13,15 @@ async function buscarTramoActual(cantidad, trx = db) {
     .first();
 }
 
+/** Tramo activo inmediatamente superior al que termina en `hasta`. */
+async function buscarSiguienteTramo(hasta, trx = db) {
+  return trx('tramo_precio_plataforma')
+    .where('participantes_desde', '>', hasta)
+    .where('activo', true)
+    .orderBy('participantes_desde', 'asc')
+    .first();
+}
+
 async function crearPago(datos, trx = db) {
   const [pago] = await trx('pago')
     .insert({
@@ -21,6 +30,7 @@ async function crearPago(datos, trx = db) {
       tipo: 'creacion_evento',
       metodo: 'pasarela',
       monto: datos.monto,
+      tramo_id: datos.tramoId ?? null,
       estado: 'pendiente',
       ref_pasarela: datos.refPasarela ?? null,
     })
@@ -111,20 +121,7 @@ async function listarEventosActivosConPago(orgId) {
     .where('tipo', 'creacion_evento')
     .whereNotIn('estado', ['cancelado'])
     .orderBy('creado_en', 'desc')
-    .select('evento_id', 'estado', 'monto', 'creado_en');
-
-  // Buscar tramo por monto para cada pago pendiente
-  const tramoPorPago = {};
-  for (const p of pagos) {
-    if (p.estado === 'pendiente') {
-      const tramo = await db('tramo_precio_plataforma')
-        .where('monto_fijo', '>=', p.monto)
-        .where('activo', true)
-        .orderBy('monto_fijo', 'asc')
-        .first();
-      if (tramo) tramoPorPago[p.evento_id] = tramo.id;
-    }
-  }
+    .select('evento_id', 'estado', 'monto', 'creado_en', 'tramo_id');
 
   const pagoMap = {};
   for (const p of pagos) {
@@ -140,7 +137,7 @@ async function listarEventosActivosConPago(orgId) {
     participantes_facturados: e.participantes_facturados ?? 0,
     estado_pago: pagoMap[e.id]?.estado ?? 'sin_cargo',
     monto_ultimo_pago: pagoMap[e.id]?.monto ?? null,
-    tramo_pendiente_id: pagoMap[e.id]?.estado === 'pendiente' ? tramoPorPago[e.id] ?? null : null,
+    tramo_pendiente_id: pagoMap[e.id]?.estado === 'pendiente' ? pagoMap[e.id].tramo_id ?? null : null,
   }));
 }
 
@@ -196,6 +193,7 @@ async function listarHistorialPagos(orgId) {
 
 module.exports = {
   buscarTramoActual,
+  buscarSiguienteTramo,
   crearPago,
   buscarPagoPendientePorEvento,
   aprobarPago,

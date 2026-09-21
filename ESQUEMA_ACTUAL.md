@@ -481,6 +481,7 @@
 | creado_en | timestamp with time zone | NO | now() |
 | notificado_urgente | boolean | NO | false |
 | link_pago | character varying(500) | YES |  |
+| tramo_id | uuid | YES |  |
 
 **PK**: id
 
@@ -489,6 +490,7 @@
 - `org_id` → `organizacion.id`
 - `participante_id` → `participante.id`
 - `revisado_por` → `usuario.id`
+- `tramo_id` → `tramo_precio_plataforma.id`
 
 **Índices**:
 - `pago_pkey`: `CREATE UNIQUE INDEX pago_pkey ON public.pago USING btree (id)`

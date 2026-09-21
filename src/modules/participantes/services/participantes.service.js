@@ -22,7 +22,7 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
-const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
+const { verificarYGenerarCargo, verificarCapacidadInscripcion } = require('../../pagos/services/pagos.service');
 const { getOrSet, invalidar } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
 const contactoEmergenciaRepository = require('../../contactoEmergencia/repositories/contactoEmergencia.repository');
@@ -167,6 +167,9 @@ async function crearParticipante(orgId, datos) {
         throw error;
       }
     }
+
+    // Límite del tramo pagado de la plataforma
+    await verificarCapacidadInscripcion(evento.id, trx);
 
     const esMenor = calcularEdad(datos.nacimiento) < 18;
     if (fichaMedicaRequerida(evento.config_ficha_medica, esMenor) && !datos.fichaMedica) {

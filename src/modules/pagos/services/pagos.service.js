@@ -10,139 +10,106 @@ const { emitirAEvento } = require('../../../sockets/emitter');
 const EVENTOS_WS = require('../../../sockets/events');
 const { getOrSet, invalidar } = require('../../../utils/cache');
 
+// Cuántos inscriptos antes del límite empiezan los avisos (uno por inscripción).
+const AVISO_ANTICIPADO = 5;
+
+/**
+ * Situación del evento respecto al tramo que tiene pagado.
+ * `participantes_facturados` es cualquier número dentro del tramo pagado
+ * (0 = tramo gratuito); el límite real es el `participantes_hasta` de ese tramo.
+ */
+async function estadoPlan(evento, trx = db) {
+  const tramoPagado = await pagosRepository.buscarTramoActual(evento.participantes_facturados ?? 0, trx);
+  if (!tramoPagado) return null;
+  const cant = await participantesRepository.contarPorEvento(evento.id, trx);
+  const siguiente = await pagosRepository.buscarSiguienteTramo(tramoPagado.participantes_hasta, trx);
+  return { cant, tramoPagado, cap: tramoPagado.participantes_hasta, siguiente };
+}
+
+/** Crea el payment link solo si el pago todavía no tiene uno. Devuelve la URL. */
+async function asegurarLink(pago, descripcion, trx = db) {
+  if (pago.link_pago) return pago.link_pago;
+  const paymentLink = await crearPaymentLink({
+    monto: Number(pago.monto),
+    referenceId: pago.id,
+    descripcion,
+    sandbox: process.env.GALIOPAY_SANDBOX === 'true',
+  });
+  await trx('pago')
+    .where({ id: pago.id })
+    .update({ ref_pasarela: paymentLink.referenceId, link_pago: paymentLink.url });
+  return paymentLink.url;
+}
+
+/**
+ * Se llama dentro de la transacción de inscripción. Bloquea la fila del evento
+ * (sin frenar los inserts de participantes) para que dos inscripciones
+ * simultáneas no se cuelen por encima del límite pagado.
+ */
+async function verificarCapacidadInscripcion(eventoId, trx) {
+  const evento = await trx('evento').where({ id: eventoId }).forNoKeyUpdate().first();
+  if (!evento) return;
+  const plan = await estadoPlan(evento, trx);
+  // Sin siguiente tramo no hay nada más que vender → no se bloquea.
+  if (!plan?.siguiente || plan.cant < plan.cap) return;
+
+  const error = new Error(
+    `Este evento alcanzó su límite de ${plan.cap} inscriptos. El organizador debe regularizar el pago de la plataforma para habilitar más inscripciones.`
+  );
+  error.status = 402;
+  throw error;
+}
+
 /**
  * Se llama después de crear un participante (fire and forget).
- * Verifica si el evento cruzó un tramo y genera el pago correspondiente.
+ * Desde 5 inscriptos antes del límite pagado, cada inscripción manda un mail
+ * al organizador con el link de pago del próximo tramo.
  */
 async function verificarYGenerarCargo(eventoId) {
-  let pagoId = null;
-  let adminEmail = null;
-  let eventoNombre = null;
-  let cantidadActual = null;
-  let montoACobrar = null;
-  let esUrgente = false;
-  let orgId = null;
+  let aviso = null;
 
   await db.transaction(async (trx) => {
-    const evento = await eventosRepository.buscarPorId(eventoId, trx);
+    const evento = await trx('evento').where({ id: eventoId }).forNoKeyUpdate().first();
     if (!evento) return;
-    orgId = evento.org_id;
 
-    cantidadActual = await participantesRepository.contarPorEvento(eventoId, trx);
-    eventoNombre = evento.nombre;
+    const plan = await estadoPlan(evento, trx);
+    if (!plan?.siguiente || plan.cant < plan.cap - AVISO_ANTICIPADO) return;
 
-    // Rango actual según inscriptos
-    const rangoActual = await trx('tramo_precio_plataforma')
-      .where('participantes_desde', '<=', cantidadActual)
-      .where('activo', true)
-      .orderBy('participantes_desde', 'desc')
-      .first();
-
-    if (!rangoActual || Number(rangoActual.monto_fijo) === 0) {
-      return;
+    let pago = await pagosRepository.buscarPagoPendientePorEvento(eventoId, trx);
+    let creado = false;
+    if (!pago) {
+      const monto = Number(plan.siguiente.monto_fijo ?? 0) - Number(plan.tramoPagado.monto_fijo ?? 0);
+      if (!(monto > 0)) return;
+      pago = await pagosRepository.crearPago(
+        { orgId: evento.org_id, eventoId, monto, tramoId: plan.siguiente.id },
+        trx
+      );
+      creado = true;
     }
 
-    const umbral90 = Math.floor(rangoActual.participantes_hasta * 0.9);
-    const limite100 = rangoActual.participantes_hasta;
-
-    // No llegó al 90% → no hacer nada
-    if (cantidadActual < umbral90) return;
-
-    // Buscar próximo rango a cobrar
-    const proximoRango = await trx('tramo_precio_plataforma')
-      .where('participantes_desde', '>', rangoActual.participantes_hasta)
-      .where('activo', true)
-      .orderBy('participantes_desde', 'asc')
-      .first();
-
-    if (!proximoRango) return; // Sin próximo rango → no hay nada que cobrar
-
-    // Verificar si ya hay un pago pendiente para este próximo rango
-    // Verificar si ya hay un pago pendiente para este próximo rango
-    const pagoPendiente = await pagosRepository.buscarPagoPendientePorEvento(eventoId, trx);
-
-    if (pagoPendiente) {
-      // Si superó el 100% y no notificamos urgente todavía → marcar y notificar
-      if (cantidadActual > limite100 && !pagoPendiente.notificado_urgente) {
-        await trx('pago')
-          .where({ id: pagoPendiente.id })
-          .update({ notificado_urgente: true });
-        esUrgente = true;
-        pagoId = pagoPendiente.id;
-        montoACobrar = Number(pagoPendiente.monto);
-        const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
-        adminEmail = admin?.email;
-      }
-      return;
-    }
-
-    // Calcular monto: próximo rango - lo ya pagado
-    const montoYaPagado = evento.participantes_facturados > 0
-      ? await trx('tramo_precio_plataforma')
-        .where('participantes_desde', '<=', evento.participantes_facturados)
-        .where('activo', true)
-        .orderBy('participantes_desde', 'desc')
-        .first()
-        .then(r => Number(r?.monto_fijo ?? 0))
-      : 0;
-
-    montoACobrar = Number(proximoRango.monto_fijo ?? 0) - Number(montoYaPagado ?? 0);
-
-    if (isNaN(montoACobrar) || montoACobrar <= 0) return;
-
-    // Es urgente si superó el 100%
-    esUrgente = cantidadActual > limite100;
-
-    const pago = await pagosRepository.crearPago(
-      { orgId: evento.org_id, eventoId, monto: montoACobrar },
+    const linkPago = await asegurarLink(
+      pago,
+      `Talita Encuentros — ${evento.nombre} (hasta ${plan.siguiente.participantes_hasta} inscriptos)`,
       trx
     );
-    pagoId = pago.id;
 
-    const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
-    adminEmail = admin?.email;
+    const admin = await trx('usuario').where({ id: evento.creado_por_usuario_id }).first();
+    aviso = { evento, pago, linkPago, plan, adminEmail: admin?.email, creado };
   });
 
-  // Solo invalidar si efectivamente se creó un pago nuevo (afecta el pagoPendiente
-  // que se muestra en el listado de eventos de la org).
-  if (pagoId && orgId) invalidar(`org:${orgId}`, `evento:${eventoId}`);
+  if (!aviso) return;
 
-  if (!pagoId || !montoACobrar) return;
+  if (aviso.creado) invalidar(`org:${aviso.evento.org_id}`, `evento:${eventoId}`);
 
-  try {
-    let linkPago;
-
-    if (esUrgente) {
-      const pago = await db('pago').where({ id: pagoId }).first();
-      linkPago = pago.link_pago;
-    } else {
-      // Nuevo pago → crear link
-      const evento = await eventosRepository.buscarPorId(eventoId);
-      const paymentLink = await crearPaymentLink({
-        monto: montoACobrar,
-        referenceId: pagoId,
-        descripcion: `Talita Encuentros — ${eventoNombre} (${cantidadActual} inscriptos)`,
-        sandbox: process.env.GALIOPAY_SANDBOX === 'true',
-      });
-      await pagosRepository.actualizarRefPasarela(pagoId, paymentLink.referenceId);
-      await db('pago').where({ id: pagoId }).update({ link_pago: paymentLink.url });
-      linkPago = paymentLink.url;
-    }
-
-    if (adminEmail) {
-      const evento = await eventosRepository.buscarPorId(eventoId);
-      const { subject, html } = templatePagoPlataformaPendiente({
-        emailAdmin: adminEmail,
-        evento,
-        monto: montoACobrar,
-        linkPago,
-        cantidadParticipantes: cantidadActual,
-        esUrgente,
-      });
-      enviarMail({ to: adminEmail, subject, html });
-    }
-  } catch (err) {
-    console.error('[pagos] Error al procesar cargo:', err.message);
+  if (aviso.adminEmail) {
+    const { subject, html } = templatePagoPlataformaPendiente({
+      evento: aviso.evento,
+      monto: aviso.pago.monto,
+      linkPago: aviso.linkPago,
+      cantidadParticipantes: aviso.plan.cant,
+      limite: aviso.plan.cap,
+    });
+    enviarMail({ to: aviso.adminEmail, subject, html });
   }
 }
 
@@ -193,11 +160,16 @@ async function procesarWebhookAprobado(refPasarela, galioPaymentId) {
     // Aprobar pago y actualizar participantes_facturados
     await trx('pago').where({ id: pago.id }).update({ estado: 'aprobado' });
 
-    // Actualizar participantes_facturados con la cantidad actual
-    const cantidadActual = await participantesRepository.contarPorEvento(pago.evento_id, trx);
-    await trx('evento')
-      .where({ id: pago.evento_id })
-      .update({ participantes_facturados: cantidadActual });
+    // El pago compra un tramo: facturados pasa a ser el inicio de ese tramo
+    // (nunca baja). Pagos viejos sin tramo_id: cantidad actual, como antes.
+    const evento = await trx('evento').where({ id: pago.evento_id }).first();
+    const tramo = pago.tramo_id
+      ? await trx('tramo_precio_plataforma').where({ id: pago.tramo_id }).first()
+      : null;
+    const facturados = tramo
+      ? Math.max(tramo.participantes_desde, evento.participantes_facturados ?? 0)
+      : await participantesRepository.contarPorEvento(pago.evento_id, trx);
+    await trx('evento').where({ id: pago.evento_id }).update({ participantes_facturados: facturados });
 
     pagoAprobado = pago;
 
@@ -233,10 +205,6 @@ async function reenviarMailPago(eventoId, orgId) {
     throw error;
   }
 
-  // Si tiene ref_pasarela, reconstruimos la URL del link de GalioPay
-  // La URL es siempre: https://pay.galio.app/payment/{id}?proof={proofToken}
-  // Pero solo tenemos el proofToken (ref_pasarela), no el id del payment link
-  // Así que generamos un nuevo payment link con el mismo monto
   const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
   if (!admin) {
     const error = new Error('No se encontró el admin del evento');
@@ -244,29 +212,30 @@ async function reenviarMailPago(eventoId, orgId) {
     throw error;
   }
 
-  const paymentLink = await crearPaymentLink({
-    monto: Number(pagoPendiente.monto),
-    referenceId: pagoPendiente.id,
-    descripcion: `Talita Encuentros — ${evento.nombre} (reenvío)`,
-    sandbox: process.env.GALIOPAY_SANDBOX === 'true',
-  });
+  const linkPago = await asegurarLink(
+    pagoPendiente,
+    `Talita Encuentros — ${evento.nombre}`
+  );
 
-  await pagosRepository.actualizarRefPasarela(pagoPendiente.id, paymentLink.referenceId);
-  await db('pago').where({ id: pagoPendiente.id }).update({ link_pago: paymentLink.url });
-
+  const plan = await estadoPlan(evento);
   const { subject, html } = templatePagoPlataformaPendiente({
-    emailAdmin: admin.email,
     evento,
     monto: pagoPendiente.monto,
-    linkPago: paymentLink.url,
-    cantidadParticipantes: await participantesRepository.contarPorEvento(eventoId),
+    linkPago,
+    cantidadParticipantes: plan?.cant,
+    limite: plan?.cap,
   });
 
   await enviarMail({ to: admin.email, subject, html });
 
-  return { linkPago: paymentLink.url, monto: pagoPendiente.monto };
+  return { linkPago, monto: pagoPendiente.monto };
 }
 
+/**
+ * El organizador elige de antemano el tramo que va a necesitar.
+ * Paga la diferencia contra lo ya pagado; `participantes_facturados` se
+ * actualiza recién cuando el webhook confirma el pago.
+ */
 async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
   const evento = await eventosRepository.buscarPorId(eventoId);
   if (!evento) {
@@ -280,7 +249,6 @@ async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
     throw error;
   }
 
-  // Verificar que el tramo objetivo sea mayor al actual
   const tramoObjetivo = await pagosRepository.buscarTramoActual(participantesObjetivo);
   if (!tramoObjetivo) {
     const error = new Error('No existe un tramo para esa cantidad de participantes');
@@ -288,79 +256,52 @@ async function pagarTramoAdelantado(eventoId, orgId, participantesObjetivo) {
     throw error;
   }
 
-  const tramoActual = evento.participantes_facturados > 0
-    ? await pagosRepository.buscarTramoActual(evento.participantes_facturados)
-    : null;
+  const plan = await estadoPlan(evento);
+  if (!plan) {
+    const error = new Error('No se pudo determinar el tramo actual del evento');
+    error.status = 500;
+    throw error;
+  }
 
-  if (tramoActual && tramoObjetivo.id === tramoActual.id) {
-    const error = new Error('Ya estás en ese tramo');
+  if (tramoObjetivo.participantes_desde <= plan.tramoPagado.participantes_desde) {
+    const error = new Error('El tramo elegido debe ser mayor al que ya tenés pago');
     error.status = 400;
     throw error;
   }
 
-  if (tramoActual && tramoObjetivo.participantes_desde <= tramoActual.participantes_desde) {
-    const error = new Error('El tramo objetivo debe ser mayor al actual');
-    error.status = 400;
-    throw error;
-  }
-
-  // Cancelar pago pendiente anterior si existe
-  const pagoPendiente = await pagosRepository.buscarPagoPendientePorEvento(eventoId);
-  if (pagoPendiente) {
-    await pagosRepository.cancelarPagosPendientes(eventoId);
-  }
-
-  // Calcular monto — total del tramo objetivo
-  const costoObjetivo = tramoObjetivo.precio_por_participante * tramoObjetivo.participantes_desde;
-  const costoActual = tramoActual
-    ? tramoActual.precio_por_participante * tramoActual.participantes_desde
-    : 0;
-  const monto = Math.round(costoObjetivo - costoActual);
-
-  if (monto <= 0) {
+  const monto = Number(tramoObjetivo.monto_fijo ?? 0) - Number(plan.tramoPagado.monto_fijo ?? 0);
+  if (!(monto > 0)) {
     const error = new Error('El monto calculado no es válido');
     error.status = 400;
     throw error;
   }
 
-  // Crear pago
-  const pago = await pagosRepository.crearPago({
-    orgId,
-    eventoId,
-    monto,
-  });
-
-  // Actualizar participantes_facturados al tramo objetivo
-  await db('evento')
-    .where({ id: eventoId })
-    .update({ participantes_facturados: tramoObjetivo.participantes_desde });
-
-  // Crear payment link
   const admin = await db('usuario').where({ id: evento.creado_por_usuario_id }).first();
 
-  const paymentLink = await crearPaymentLink({
-    monto: Number(monto),
-    referenceId: pago.id,
-    descripcion: `Talita Encuentros — ${evento.nombre} (tramo ${tramoObjetivo.participantes_desde} participantes)`,
-    sandbox: process.env.GALIOPAY_SANDBOX === 'true',
+  const { pago, linkPago } = await db.transaction(async (trx) => {
+    await pagosRepository.cancelarPagosPendientes(eventoId, trx);
+    const nuevo = await pagosRepository.crearPago({ orgId, eventoId, monto, tramoId: tramoObjetivo.id }, trx);
+    const link = await asegurarLink(
+      nuevo,
+      `Talita Encuentros — ${evento.nombre} (hasta ${tramoObjetivo.participantes_hasta} inscriptos)`,
+      trx
+    );
+    return { pago: nuevo, linkPago: link };
   });
-
-  await pagosRepository.actualizarRefPasarela(pago.id, paymentLink.referenceId);
-  await db('pago').where({ id: pago.id }).update({ link_pago: paymentLink.url });
 
   if (admin) {
     const { subject, html } = templatePagoPlataformaPendiente({
-      emailAdmin: admin.email,
       evento,
       monto,
-      linkPago: paymentLink.url,
-      cantidadParticipantes: tramoObjetivo.participantes_desde,
+      linkPago,
+      cantidadParticipantes: plan.cant,
+      limite: plan.cap,
     });
     enviarMail({ to: admin.email, subject, html });
   }
 
   invalidar(`evento:${eventoId}`, `org:${orgId}`);
-  return { linkPago: paymentLink.url, monto, tramo: tramoObjetivo };
+  return { linkPago, monto, tramo: tramoObjetivo, pagoId: pago.id };
 }
 
 async function listarTramos() {
@@ -411,6 +352,7 @@ async function listarHistorial(orgId) {
 
 module.exports = {
   verificarYGenerarCargo,
+  verificarCapacidadInscripcion,
   procesarWebhookAprobado,
   pagarTramoAdelantado,
   reenviarMailPago,

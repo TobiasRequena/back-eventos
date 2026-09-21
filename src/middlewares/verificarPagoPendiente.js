@@ -1,4 +1,5 @@
 const { db } = require('../config/db');
+const pagosRepository = require('../modules/pagos/repositories/pagos.repository');
 const participantesRepository = require('../modules/participantes/repositories/participantes.repository');
 
 async function verificarPagoPendiente(req, res, next) {
@@ -32,17 +33,8 @@ async function verificarPagoPendiente(req, res, next) {
 
     const cantidadActual = await participantesRepository.contarPorEvento(eventoId);
 
-    // Buscar el rango que pagaron
-    const rangoFacturado = evento.participantes_facturados > 0
-      ? await db('tramo_precio_plataforma')
-        .where('participantes_desde', '<=', evento.participantes_facturados)
-        .where('activo', true)
-        .orderBy('participantes_desde', 'desc')
-        .first()
-      : await db('tramo_precio_plataforma')
-        .where('participantes_desde', 0)
-        .where('activo', true)
-        .first();
+    // Tramo pagado (participantes_facturados = 0 → tramo gratuito)
+    const rangoFacturado = await pagosRepository.buscarTramoActual(evento.participantes_facturados ?? 0);
 
     if (!rangoFacturado) return next();
 
