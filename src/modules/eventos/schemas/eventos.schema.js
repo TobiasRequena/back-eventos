@@ -26,7 +26,7 @@ const crearEventoSchema = z.object({
   body: z
     .object({
       nombre: z.string().min(1, 'El nombre es obligatorio').max(150),
-      descripcion: z.string().max(2000).optional(),
+      descripcion: z.string().max(6000).optional(),
       codigo: z
         .string()
         .min(3, 'El código debe tener al menos 3 caracteres')
@@ -64,7 +64,7 @@ const editarEventoSchema = z.object({
   }),
   body: z.object({
     nombre: z.string().min(1).max(150).optional(),
-    descripcion: z.string().max(2000).optional(),
+    descripcion: z.string().max(6000).optional(),
     codigo: z
       .string()
       .min(3)
