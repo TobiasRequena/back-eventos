@@ -4,6 +4,7 @@
  *
  * Diseño minimalista pero prolijo — funciona en todos los clientes de mail.
  */
+const descripcionAHtml = require('./descripcionHtml');
 
 function templateConfirmacionInscripcion({ participante, evento, grupo = null }) {
   const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
@@ -30,7 +31,7 @@ function templateConfirmacionInscripcion({ participante, evento, grupo = null })
           <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos del evento</h2>
           <p style="margin: 4px 0;"><strong>Evento:</strong> ${evento.nombre}</p>
           <p style="margin: 4px 0;"><strong>Fecha:</strong> ${fechaInicio}</p>
-          ${evento.descripcion ? `<p style="margin: 4px 0;"><strong>Descripción:</strong> ${evento.descripcion}</p>` : ''}
+          ${evento.descripcion ? `<div style="margin: 4px 0;"><strong>Descripción:</strong> ${descripcionAHtml(evento.descripcion)}</div>` : ''}
         </div>
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
