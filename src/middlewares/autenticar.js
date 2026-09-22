@@ -19,6 +19,12 @@ function autenticar(req, res, next) {
 
     try {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Rechazar tokens de otro tipo (ej. referente) firmados con el mismo secret
+        if (payload.tipo && payload.tipo !== 'admin') {
+            return res.status(403).json({ error: { message: 'Token inválido para esta operación' } });
+        }
+
         req.usuario = payload; // { sub: usuarioId, email, iat, exp }
         next();
     } catch (error) {
