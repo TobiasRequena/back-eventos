@@ -26,7 +26,7 @@ const crearEventoSchema = z.object({
   body: z
     .object({
       nombre: z.string().min(1, 'El nombre es obligatorio').max(150),
-      descripcion: z.string().max(2000).optional(),
+      descripcion: z.string().max(6000).optional(),
       codigo: z
         .string()
         .min(3, 'El código debe tener al menos 3 caracteres')
@@ -50,6 +50,7 @@ const crearEventoSchema = z.object({
       configFichaMedica: z.string().optional().default('no'),
       configCertificado: z.string().optional().default('no'),
       autorizacionTemplateUrl: z.string().nullable().optional(),
+      solicitaContactoEmergencia: z.boolean().optional().default(false),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
       message: 'fechaFin debe ser igual o posterior a fechaInicio',
@@ -63,7 +64,7 @@ const editarEventoSchema = z.object({
   }),
   body: z.object({
     nombre: z.string().min(1).max(150).optional(),
-    descripcion: z.string().max(2000).optional(),
+    descripcion: z.string().max(6000).optional(),
     codigo: z
       .string()
       .min(3)
@@ -85,6 +86,7 @@ const editarEventoSchema = z.object({
     configFichaMedica: z.string().optional(),
     configCertificado: z.string().optional(),
     autorizacionTemplateUrl: z.string().nullable().optional(),
+    solicitaContactoEmergencia: z.boolean().optional(),
   }),
 });
 

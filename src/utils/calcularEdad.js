@@ -4,13 +4,16 @@ function calcularEdad(nacimiento) {
   const hoy = new Date();
   const nac = new Date(nacimiento);
 
-  let edad = hoy.getFullYear() - nac.getFullYear();
+  // nac viene serializada en UTC medianoche (columna DATE de Postgres o
+  // string ISO "YYYY-MM-DD"): hay que leerla con getters UTC, si no el
+  // día se corre en servidores con TZ detrás de UTC (ej. Argentina).
+  let edad = hoy.getFullYear() - nac.getUTCFullYear();
 
   if (
     hoy < new Date(
       hoy.getFullYear(),
-      nac.getMonth(),
-      nac.getDate()
+      nac.getUTCMonth(),
+      nac.getUTCDate()
     )
   ) {
     edad--;

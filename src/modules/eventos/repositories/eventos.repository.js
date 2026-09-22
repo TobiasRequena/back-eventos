@@ -52,6 +52,7 @@ async function crear(datos, trx = db) {
       config_certificado: datos.configCertificado ?? 'no',
       requiere_autorizacion_menores: datos.requiereAutorizacionMenores ?? false,
       autorizacion_template_url: datos.autorizacionTemplateUrl ?? null,
+      solicita_contacto_emergencia: datos.solicitaContactoEmergencia ?? false,
     })
     .returning('*');
 
@@ -288,6 +289,23 @@ async function listarFichasMedicasRelevantes(eventoId) {
     .orderBy('participante.apellido', 'asc');
 }
 
+async function listarContactosEmergencia(eventoId) {
+  return db('contacto_emergencia')
+    .join('participante', 'participante.id', 'contacto_emergencia.participante_id')
+    .where('contacto_emergencia.evento_id', eventoId)
+    .where('participante.activo', true)
+    .select(
+      'participante.id as participante_id',
+      'participante.nombre',
+      'participante.apellido',
+      'participante.es_mayor',
+      'contacto_emergencia.nombre as contacto_nombre',
+      'contacto_emergencia.telefono',
+      'contacto_emergencia.parentesco',
+    )
+    .orderBy('participante.apellido', 'asc');
+}
+
 async function contarAcreditados(eventoId) {
   const [{ count }] = await db('checkin')
     .join('participante', 'participante.id', 'checkin.participante_id')
@@ -313,5 +331,6 @@ module.exports = {
   resumenPagos,
   kpisFichaMedica,
   listarFichasMedicasRelevantes,
+  listarContactosEmergencia,
   contarAcreditados,
 };

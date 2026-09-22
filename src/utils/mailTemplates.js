@@ -4,6 +4,7 @@
  *
  * Diseño minimalista pero prolijo — funciona en todos los clientes de mail.
  */
+const descripcionAHtml = require('./descripcionHtml');
 
 function templateConfirmacionInscripcion({ participante, evento, grupo = null }) {
   const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
@@ -30,7 +31,7 @@ function templateConfirmacionInscripcion({ participante, evento, grupo = null })
           <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos del evento</h2>
           <p style="margin: 4px 0;"><strong>Evento:</strong> ${evento.nombre}</p>
           <p style="margin: 4px 0;"><strong>Fecha:</strong> ${fechaInicio}</p>
-          ${evento.descripcion ? `<p style="margin: 4px 0;"><strong>Descripción:</strong> ${evento.descripcion}</p>` : ''}
+          ${evento.descripcion ? `<div style="margin: 4px 0;"><strong>Descripción:</strong> ${descripcionAHtml(evento.descripcion)}</div>` : ''}
         </div>
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
@@ -256,10 +257,15 @@ function templateInfoGrupoResponsable({ responsable, grupo, evento }) {
   };
 }
 
-function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, cantidadParticipantes, esUrgente = false }) {
+function templatePagoPlataformaPendiente({ evento, monto, linkPago, cantidadParticipantes, limite }) {
+  const restantes = limite != null && cantidadParticipantes != null
+    ? Math.max(limite - cantidadParticipantes, 0)
+    : null;
+  const llegoAlLimite = restantes === 0;
+
   return {
-    subject: esUrgente
-      ? `Aviso importante — ${evento.nombre} superó el límite de inscriptos`
+    subject: llegoAlLimite
+      ? `Llegaste al límite de inscriptos — ${evento.nombre}`
       : `Pago de plataforma pendiente — ${evento.nombre}`,
     html: `
       <!DOCTYPE html>
@@ -268,12 +274,14 @@ function templatePagoPlataformaPendiente({ emailAdmin, evento, monto, linkPago, 
       <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
         
         <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
-          ${esUrgente ? '🚨 Límite de inscriptos superado' : '💳 Pago de plataforma pendiente'}
+          ${llegoAlLimite ? '🚨 Límite de inscriptos alcanzado' : '💳 Pago de plataforma pendiente'}
         </h1>
 
-        <p>${esUrgente
-        ? `El evento <strong>${evento.nombre}</strong> superó el límite de inscriptos del plan actual. <strong>Las funciones del evento han sido bloqueadas</strong> hasta que regularices el pago.`
-        : `El evento <strong>${evento.nombre}</strong> está acercándose al límite de inscriptos del plan actual.`
+        <p>${llegoAlLimite
+        ? `El evento <strong>${evento.nombre}</strong> llegó al límite de <strong>${limite}</strong> inscriptos del plan actual. <strong>No se podrán inscribir más participantes</strong> hasta que regularices el pago.`
+        : restantes !== null
+          ? `El evento <strong>${evento.nombre}</strong> está por llegar al límite de inscriptos del plan actual: te ${restantes === 1 ? 'queda <strong>1 inscripción</strong> disponible' : `quedan <strong>${restantes} inscripciones</strong> disponibles`}. Para no perder funciones, realizá el pago.`
+          : `El evento <strong>${evento.nombre}</strong> tiene un pago de plataforma pendiente.`
       }</p>
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">

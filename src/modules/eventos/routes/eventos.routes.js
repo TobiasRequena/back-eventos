@@ -39,5 +39,6 @@ router.get('/:id/stats', autenticar, resolverOrganizacionActiva, verificarPagoPe
 router.get('/:id/inscriptos/excel', validate(idParamSchema), eventosController.descargarExcel);
 router.get('/:id/participantes/pendientes-pago', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.listarPendientesPago);
 router.get('/:id/fichas-medicas', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.listarFichasMedicas);
+router.get('/:id/contactos-emergencia', autenticar, resolverOrganizacionActiva, verificarPagoPendiente, eventosController.listarContactosEmergencia);
 
 module.exports = router;

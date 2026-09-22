@@ -3,6 +3,7 @@ const comunicacionesRepository = require('../repositories/comunicaciones.reposit
 const eventosRepository = require('../../eventos/repositories/eventos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const { enviarMail } = require('../../../utils/mail');
+const escapeHtml = require('../../../utils/escapeHtml');
 const s3Client = require('../../../config/s3');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { construirUrlPublica } = require('../../../utils/storage');
@@ -37,15 +38,6 @@ async function obtenerDestinatarios(eventoId, destinatarios, filtros) {
     const respuestas = p.respuestas_form ?? {};
     return filtros.every(f => respuestas[f.campo_form_id] === f.valor);
   });
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function templateComunicacion({ nombreEvento, asunto, mensaje }) {

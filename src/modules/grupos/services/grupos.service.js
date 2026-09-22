@@ -306,6 +306,11 @@ async function loginReferente({ dni, codigoGrupo }) {
 
   // Traer datos del evento para la cabecera del panel
   const evento = await eventosRepository.buscarPorId(grupo.evento_id);
+  if (!evento) {
+    const error = new Error('El evento de este grupo ya no está disponible');
+    error.status = 409;
+    throw error;
+  }
   const { construirUrlPublica } = require('../../../utils/storage');
   const archivosRepository = require('../../archivos/repositories/archivos.repository');
   const portada = await archivosRepository.buscarPortadaDeEvento(evento.id);

@@ -24,6 +24,8 @@ El tenant de la plataforma (parroquia, diócesis, movimiento pastoral).
 | `configuracion` | JSONB | Libre, para settings futuros sin migración. |
 | `estado_facturacion` | VARCHAR(30) | Estado de pago a la plataforma (RN07). |
 | `creado_en` | TIMESTAMPTZ | |
+| `sitio_web` | VARCHAR(255) | Opcional. URL http(s) (CHECK). |
+| `instagram`, `twitter`, `facebook` | VARCHAR | Opcionales. Solo nombre de usuario, sin `@` ni link (CHECK por regex). La URL se arma al mostrar. |
 
 **No tiene `cbu_cvu` ni `alias_cobro`** — esos datos viven en `evento`, porque distintos eventos de una misma organización pueden cobrar a cuentas bancarias distintas.
 

@@ -46,11 +46,18 @@ async function crearUsuario({ nombre, apellido, email, contrasenaHash }, trx = d
  * Inserta una organización nueva. Se usa tanto para la organización implícita
  * (es_implicita = true) como para la que el usuario completa a mano en el registro.
  */
-async function crearOrganizacion({ nombre, esImplicita }, trx = db) {
+async function crearOrganizacion(
+    { nombre, esImplicita, sitioWeb, instagram, twitter, facebook },
+    trx = db
+) {
     const [organizacion] = await trx('organizacion')
         .insert({
             nombre,
             es_implicita: esImplicita,
+            sitio_web: sitioWeb ?? null,
+            instagram: instagram ?? null,
+            twitter: twitter ?? null,
+            facebook: facebook ?? null,
             configuracion: {}, // JSONB vacío por ahora, libre para el futuro
             estado_facturacion: 'sin_pagos', // estado inicial, no hay eventos creados todavía
         })

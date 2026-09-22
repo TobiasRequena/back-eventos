@@ -20,6 +20,7 @@ const SALT_ROUNDS = 10; // costo del hash — 10 es un estándar razonable, ni m
 function generarToken(usuario) {
   return jwt.sign(
     {
+      tipo: 'admin',
       sub: usuario.id,
       email: usuario.email,
       esSuperAdmin: usuario.es_super_admin ?? false,
@@ -68,7 +69,14 @@ async function registrar({ nombre, apellido, email, contrasena, organizacion }) 
     );
 
     const org = await authRepository.crearOrganizacion(
-      { nombre: nombreOrganizacion, esImplicita },
+      {
+        nombre: nombreOrganizacion,
+        esImplicita,
+        sitioWeb: organizacion?.sitioWeb,
+        instagram: organizacion?.instagram,
+        twitter: organizacion?.twitter,
+        facebook: organizacion?.facebook,
+      },
       trx
     );
 

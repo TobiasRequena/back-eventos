@@ -22,9 +22,10 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
-const { verificarYGenerarCargo } = require('../../pagos/services/pagos.service');
+const { verificarYGenerarCargo, verificarCapacidadInscripcion } = require('../../pagos/services/pagos.service');
 const { getOrSet, invalidar } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
+const contactoEmergenciaRepository = require('../../contactoEmergencia/repositories/contactoEmergencia.repository');
 const calcularEdad = require('../../../utils/calcularEdad');
 const sanitizarParticipante = require('../../../utils/sanitizarParticipante');
 
@@ -36,12 +37,15 @@ function calcularEsMayor(nacimiento) {
   const hoy = new Date();
   const fechaNac = new Date(nacimiento);
 
-  let edad = hoy.getFullYear() - fechaNac.getFullYear();
+  // fechaNac viene serializada en UTC medianoche (columna DATE de Postgres
+  // o string ISO "YYYY-MM-DD"): hay que leerla con getters UTC, si no el
+  // día se corre en servidores con TZ detrás de UTC (ej. Argentina).
+  let edad = hoy.getFullYear() - fechaNac.getUTCFullYear();
   const mesActual = hoy.getMonth();
-  const mesNac = fechaNac.getMonth();
+  const mesNac = fechaNac.getUTCMonth();
 
   // Ajuste: si todavía no cumplió años este año, restar 1
-  if (mesActual < mesNac || (mesActual === mesNac && hoy.getDate() < fechaNac.getDate())) {
+  if (mesActual < mesNac || (mesActual === mesNac && hoy.getDate() < fechaNac.getUTCDate())) {
     edad--;
   }
 
@@ -122,6 +126,12 @@ function fichaMedicaRequerida(configFichaMedica, esMenor) {
   return false;
 }
 
+// El contacto de emergencia, cuando el evento lo solicita, es obligatorio
+// solo para menores — para mayores queda a criterio del participante.
+function contactoEmergenciaRequerido(solicitaContactoEmergencia, esMenor) {
+  return Boolean(solicitaContactoEmergencia) && esMenor;
+}
+
 /**
  * Crea un participante nuevo en un evento.
  *
@@ -161,9 +171,16 @@ async function crearParticipante(orgId, datos) {
       }
     }
 
+    // Límite del tramo pagado de la plataforma
+    await verificarCapacidadInscripcion(evento.id, trx);
+
     const esMenor = calcularEdad(datos.nacimiento) < 18;
     if (fichaMedicaRequerida(evento.config_ficha_medica, esMenor) && !datos.fichaMedica) {
       const error = new Error('La ficha médica es obligatoria para inscribirse en este evento');
+      error.status = 400; throw error;
+    }
+    if (contactoEmergenciaRequerido(evento.solicita_contacto_emergencia, esMenor) && !datos.contactoEmergencia) {
+      const error = new Error('El contacto de emergencia es obligatorio para menores en este evento');
       error.status = 400; throw error;
     }
 
@@ -291,6 +308,17 @@ async function crearParticipante(orgId, datos) {
         console.error('[ficha] error al crear:', err.message);
         throw err;
       }
+    }
+
+    if (datos.contactoEmergencia) {
+      await contactoEmergenciaRepository.crear({
+        org_id: orgIdFinal,
+        evento_id: datos.eventoId,
+        participante_id: participante.id,
+        nombre: datos.contactoEmergencia.nombre,
+        telefono: datos.contactoEmergencia.telefono,
+        parentesco: datos.contactoEmergencia.parentesco || null,
+      }, trx);
     }
 
     // 9. Inscribir a los talleres elegidos (si vinieron)

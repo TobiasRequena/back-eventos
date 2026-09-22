@@ -180,6 +180,33 @@
 - `comunicacion_pkey`: `CREATE UNIQUE INDEX comunicacion_pkey ON public.comunicacion USING btree (id)`
 - `idx_comunicacion_evento`: `CREATE INDEX idx_comunicacion_evento ON public.comunicacion USING btree (evento_id)`
 
+## `contacto_emergencia`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| org_id | uuid | NO |  |
+| evento_id | uuid | NO |  |
+| participante_id | uuid | NO |  |
+| nombre | character varying(150) | NO |  |
+| telefono | character varying(30) | NO |  |
+| parentesco | character varying(100) | YES |  |
+| creado_en | timestamp with time zone | NO | now() |
+| actualizado_en | timestamp with time zone | NO | now() |
+
+**PK**: id
+
+**FKs**:
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
+- `org_id` → `organizacion.id`
+- `participante_id` → `participante.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `contacto_emergencia_pkey`: `CREATE UNIQUE INDEX contacto_emergencia_pkey ON public.contacto_emergencia USING btree (id)`
+- `contacto_emergencia_participante_id_evento_id_key`: `CREATE UNIQUE INDEX contacto_emergencia_participante_id_evento_id_key ON public.contacto_emergencia USING btree (participante_id, evento_id)`
+- `idx_contacto_emergencia_evento`: `CREATE INDEX idx_contacto_emergencia_evento ON public.contacto_emergencia USING btree (evento_id)`
+- `idx_contacto_emergencia_participante`: `CREATE INDEX idx_contacto_emergencia_participante ON public.contacto_emergencia USING btree (participante_id)`
+
 ## `esquema_grupos_trabajo`
 
 | Columna | Tipo | Nullable | Default |
@@ -248,6 +275,7 @@
 | config_certificado | config_certificado | NO | 'no'::config_certificado |
 | autorizacion_template_url | character varying(500) | YES |  |
 | requiere_autorizacion_menores | boolean | NO | false |
+| solicita_contacto_emergencia | boolean | NO | false |
 
 **PK**: id
 
@@ -424,6 +452,10 @@
 | configuracion | jsonb | NO | '{}'::jsonb |
 | estado_facturacion | character varying(30) | NO | 'al_dia'::character varying |
 | creado_en | timestamp with time zone | NO | now() |
+| sitio_web | character varying(255) | SÍ |  |
+| instagram | character varying(30) | SÍ |  |
+| twitter | character varying(15) | SÍ |  |
+| facebook | character varying(50) | SÍ |  |
 
 **PK**: id
 
@@ -449,6 +481,7 @@
 | creado_en | timestamp with time zone | NO | now() |
 | notificado_urgente | boolean | NO | false |
 | link_pago | character varying(500) | YES |  |
+| tramo_id | uuid | YES |  |
 
 **PK**: id
 
@@ -457,6 +490,7 @@
 - `org_id` → `organizacion.id`
 - `participante_id` → `participante.id`
 - `revisado_por` → `usuario.id`
+- `tramo_id` → `tramo_precio_plataforma.id`
 
 **Índices**:
 - `pago_pkey`: `CREATE UNIQUE INDEX pago_pkey ON public.pago USING btree (id)`

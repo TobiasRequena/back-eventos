@@ -40,6 +40,9 @@ const crearParticipanteSchema = z.object({
 
     // Ficha médica opcional
     fichaMedica: z.record(z.unknown()).nullable().optional(),
+
+    // Contacto de emergencia — obligatorio para menores si el evento lo solicita
+    contactoEmergencia: z.record(z.unknown()).nullable().optional(),
   }),
 });
 
