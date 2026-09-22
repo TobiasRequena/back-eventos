@@ -37,12 +37,15 @@ function calcularEsMayor(nacimiento) {
   const hoy = new Date();
   const fechaNac = new Date(nacimiento);
 
-  let edad = hoy.getFullYear() - fechaNac.getFullYear();
+  // fechaNac viene serializada en UTC medianoche (columna DATE de Postgres
+  // o string ISO "YYYY-MM-DD"): hay que leerla con getters UTC, si no el
+  // día se corre en servidores con TZ detrás de UTC (ej. Argentina).
+  let edad = hoy.getFullYear() - fechaNac.getUTCFullYear();
   const mesActual = hoy.getMonth();
-  const mesNac = fechaNac.getMonth();
+  const mesNac = fechaNac.getUTCMonth();
 
   // Ajuste: si todavía no cumplió años este año, restar 1
-  if (mesActual < mesNac || (mesActual === mesNac && hoy.getDate() < fechaNac.getDate())) {
+  if (mesActual < mesNac || (mesActual === mesNac && hoy.getDate() < fechaNac.getUTCDate())) {
     edad--;
   }
 
