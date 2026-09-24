@@ -19,6 +19,7 @@ async function crearEsquema(datos, trx = db) {
       nombres_preset: datos.nombresPreset,
       nombres_lista: JSON.stringify(datos.nombresLista ?? []),
       mantener_grupos_inscripcion: datos.mantenerGruposInscripcion ?? false,
+      asignacion_manual: datos.asignacionManual ?? false,
       estado: 'borrador',
       creado_por_usuario_id: datos.creadoPorUsuarioId,
     })
@@ -126,6 +127,15 @@ async function buscarGrupoPorId(id, trx = db) {
   return trx('grupo_trabajo').where({ id }).first();
 }
 
+async function actualizarGrupo(id, datos, trx = db) {
+  const [grupo] = await trx('grupo_trabajo').where({ id }).update(datos).returning('*');
+  return grupo;
+}
+
+async function eliminarGrupo(id, trx = db) {
+  return trx('grupo_trabajo').where({ id }).del();
+}
+
 // ─── INTEGRANTES ─────────────────────────────────────────────────────────────
 
 async function agregarIntegrantes(filas, trx = db) {
@@ -217,6 +227,8 @@ module.exports = {
   listarGruposPorEsquema,
   eliminarGruposDeEsquema,
   buscarGrupoPorId,
+  actualizarGrupo,
+  eliminarGrupo,
   agregarIntegrantes,
   buscarIntegrante,
   moverIntegrante,

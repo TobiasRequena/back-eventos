@@ -264,6 +264,7 @@ async function editarEsquema(eventoId, esquemaId, orgId, datos) {
   if (datos.nombresPreset !== undefined) datosDb.nombres_preset = datos.nombresPreset;
   if (datos.nombresLista !== undefined) datosDb.nombres_lista = JSON.stringify(datos.nombresLista);
   if (datos.mantenerGruposInscripcion !== undefined) datosDb.mantener_grupos_inscripcion = datos.mantenerGruposInscripcion;
+  if (datos.asignacionManual !== undefined) datosDb.asignacion_manual = datos.asignacionManual;
 
   const actualizado = await repo.actualizarEsquema(esquemaId, datosDb);
   invalidar(`evento:${eventoId}`);
@@ -495,7 +496,37 @@ async function generar(eventoId, esquemaId, orgId) {
 
     let indiceGlobalGrupo = 0;
 
-    if (esquema.mantener_grupos_inscripcion) {
+    if (esquema.asignacion_manual) {
+      // ── MODO: manual — grupos vacíos, todos quedan sin asignar ───────────
+      const cantGrupos = calcularCantidadGrupos(elegibles.length, esquema.modo_tamano, esquema.valor_tamano);
+
+      for (let idx = 0; idx < cantGrupos; idx++) {
+        gruposParaInsertar.push({
+          org_id: esquema.org_id,
+          evento_id: eventoId,
+          esquema_id: esquemaId,
+          tanda_id: null,
+          nombre: generarNombreGrupo({
+            modoNombrado: 'por_grupo',
+            lista,
+            accionSinNombres: esquema.accion_sin_nombres,
+            indiceGlobal: indiceGlobalGrupo,
+            nombreTanda: null,
+            indiceEnTanda: idx,
+          }),
+          orden_global: indiceGlobalGrupo,
+        });
+        integrantesParaInsertar.push([]);
+        indiceGlobalGrupo++;
+      }
+
+      pendientes.push(...elegibles.map(p => ({
+        esquema_id: esquemaId,
+        participante_id: p.id,
+        motivo: 'sin_clasificar',
+      })));
+
+    } else if (esquema.mantener_grupos_inscripcion) {
       // ── MODO: mantener grupos de inscripción juntos ──────────────────────
 
       // Separar en grupos de inscripción e individuales
@@ -619,29 +650,91 @@ async function generar(eventoId, esquemaId, orgId) {
 }
 // ─── AJUSTES MANUALES ────────────────────────────────────────────────────────
 
-async function asignarAGrupo(eventoId, esquemaId, grupoId, participanteId, orgId) {
-  await verificarEsquemaDeLaOrg(esquemaId, orgId);
-  const grupo = await repo.buscarGrupoPorId(grupoId);
+async function verificarGrupoDelEsquema(grupoId, esquemaId, trx = db) {
+  const grupo = await repo.buscarGrupoPorId(grupoId, trx);
   if (!grupo || grupo.esquema_id !== esquemaId) {
     const error = new Error('Grupo no encontrado en este esquema'); error.status = 404; throw error;
   }
+  return grupo;
+}
+
+async function asignarAGrupo(eventoId, esquemaId, grupoId, participanteIds, orgId) {
+  await verificarEsquemaDeLaOrg(esquemaId, orgId);
+  await verificarGrupoDelEsquema(grupoId, esquemaId);
 
   await db.transaction(async (trx) => {
-    // Si está en otro grupo del mismo esquema, moverlo
-    const grupos = await trx('grupo_trabajo').where({ esquema_id: esquemaId }).select('id');
-    for (const g of grupos) {
-      const integrante = await repo.buscarIntegrante(g.id, participanteId, trx);
-      if (integrante && g.id !== grupoId) {
-        await repo.eliminarIntegrante(g.id, participanteId, trx);
-        break;
-      }
-    }
+    // Sacarlos de cualquier grupo del esquema (cubre "mover" y evita duplicados)
+    await trx('grupo_trabajo_participante')
+      .whereIn('participante_id', participanteIds)
+      .whereIn('grupo_trabajo_id', trx('grupo_trabajo').where({ esquema_id: esquemaId }).select('id'))
+      .del();
 
-    // Quitar de pendientes si estaba
-    await repo.eliminarPendiente(esquemaId, participanteId, trx);
+    await trx('participante_esquema_pendiente')
+      .where({ esquema_id: esquemaId })
+      .whereIn('participante_id', participanteIds)
+      .del();
 
-    // Agregar al grupo destino
-    await repo.agregarIntegrantes([{ grupo_trabajo_id: grupoId, participante_id: participanteId }], trx);
+    await repo.agregarIntegrantes(
+      participanteIds.map(pid => ({ grupo_trabajo_id: grupoId, participante_id: pid })),
+      trx
+    );
+  });
+
+  invalidar(`evento:${eventoId}`);
+}
+
+async function crearGrupo(eventoId, esquemaId, orgId, nombre) {
+  const esquema = await verificarEsquemaDeLaOrg(esquemaId, orgId);
+
+  const { cantidad, maxOrden } = await db('grupo_trabajo')
+    .where({ esquema_id: esquemaId })
+    .first(db.raw('count(*)::int as cantidad'), db.raw('max(orden_global) as "maxOrden"'));
+
+  const nombreFinal = nombre ?? generarNombreGrupo({
+    modoNombrado: 'por_grupo',
+    lista: resolverListaNombres(esquema),
+    accionSinNombres: 'reciclar_numerado', // al crear a mano nunca bloqueamos
+    indiceGlobal: cantidad,
+  });
+
+  const [grupo] = await repo.crearGruposTrabajo([{
+    org_id: esquema.org_id,
+    evento_id: eventoId,
+    esquema_id: esquemaId,
+    tanda_id: null,
+    nombre: nombreFinal,
+    orden_global: (maxOrden ?? -1) + 1,
+  }]);
+
+  invalidar(`evento:${eventoId}`);
+  return { ...grupo, integrantes: [] };
+}
+
+async function renombrarGrupo(eventoId, esquemaId, grupoId, orgId, nombre) {
+  await verificarEsquemaDeLaOrg(esquemaId, orgId);
+  await verificarGrupoDelEsquema(grupoId, esquemaId);
+  const grupo = await repo.actualizarGrupo(grupoId, { nombre });
+  invalidar(`evento:${eventoId}`);
+  return grupo;
+}
+
+async function eliminarGrupo(eventoId, esquemaId, grupoId, orgId) {
+  await verificarEsquemaDeLaOrg(esquemaId, orgId);
+  await verificarGrupoDelEsquema(grupoId, esquemaId);
+
+  await db.transaction(async (trx) => {
+    const integrantes = await trx('grupo_trabajo_participante')
+      .where({ grupo_trabajo_id: grupoId })
+      .select('participante_id');
+
+    await repo.agregarPendientes(integrantes.map(i => ({
+      esquema_id: esquemaId,
+      participante_id: i.participante_id,
+      motivo: 'sin_clasificar',
+    })), trx);
+
+    await trx('grupo_trabajo_participante').where({ grupo_trabajo_id: grupoId }).del();
+    await repo.eliminarGrupo(grupoId, trx);
   });
 
   invalidar(`evento:${eventoId}`);
@@ -1246,6 +1339,9 @@ module.exports = {
   generar,
   asignarAGrupo,
   quitarDeGrupo,
+  crearGrupo,
+  renombrarGrupo,
+  eliminarGrupo,
   listarGrupos,
   listarPendientes,
   obtenerPresets,
