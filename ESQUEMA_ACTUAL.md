@@ -230,6 +230,7 @@
 | creado_por_usuario_id | uuid | NO |  |
 | creado_en | timestamp with time zone | NO | now() |
 | mantener_grupos_inscripcion | boolean | NO | false |
+| asignacion_manual | boolean | NO | false |
 
 **PK**: id
 

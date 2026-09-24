@@ -8,7 +8,7 @@ const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganiz
 const {
   crearEsquemaSchema, editarEsquemaSchema,
   crearTandaSchema, editarTandaSchema, reordenarTandasSchema,
-  excluirParticipantesSchema, asignarAGrupoSchema,
+  excluirParticipantesSchema, asignarAGrupoSchema, crearGrupoSchema, renombrarGrupoSchema,
   esquemaIdParamSchema, eventoIdParamSchema, grupoIdParamSchema,
 } = require('../schemas/gruposTrabajo.schema');
 const { quitarExcluidoSchema } = require('../schemas/gruposTrabajo.schema');
@@ -61,6 +61,9 @@ router.get(
 // ─── GRUPOS Y PENDIENTES ─────────────────────────────────────────────────────
 router.get('/:esquemaId/grupos', validate(esquemaIdParamSchema), controller.listarGrupos);
 router.get('/:esquemaId/pendientes', validate(esquemaIdParamSchema), controller.listarPendientes);
+router.post('/:esquemaId/grupos', validate(crearGrupoSchema), controller.crearGrupo);
+router.patch('/:esquemaId/grupos/:grupoId', validate(renombrarGrupoSchema), controller.renombrarGrupo);
+router.delete('/:esquemaId/grupos/:grupoId', validate(grupoIdParamSchema), controller.eliminarGrupo);
 router.patch('/:esquemaId/grupos/:grupoId/agregar', validate(asignarAGrupoSchema), controller.asignarAGrupo);
 router.patch('/:esquemaId/grupos/:grupoId/quitar/:participanteId', validate(quitarDeGrupoSchema), controller.quitarDeGrupo);
 

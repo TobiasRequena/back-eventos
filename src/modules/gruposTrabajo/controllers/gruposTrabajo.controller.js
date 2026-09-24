@@ -147,9 +147,36 @@ async function asignarAGrupo(req, res, next) {
   try {
     await service.asignarAGrupo(
       req.params.eventoId, req.params.esquemaId, req.params.grupoId,
-      req.body.participanteId, req.orgId
+      req.body.participanteIds, req.orgId
     );
     res.status(200).json({ ok: true });
+  } catch (error) { next(error); }
+}
+
+async function crearGrupo(req, res, next) {
+  try {
+    const grupo = await service.crearGrupo(
+      req.params.eventoId, req.params.esquemaId, req.orgId, req.body.nombre
+    );
+    res.status(201).json({ grupo });
+  } catch (error) { next(error); }
+}
+
+async function renombrarGrupo(req, res, next) {
+  try {
+    const grupo = await service.renombrarGrupo(
+      req.params.eventoId, req.params.esquemaId, req.params.grupoId, req.orgId, req.body.nombre
+    );
+    res.status(200).json({ grupo });
+  } catch (error) { next(error); }
+}
+
+async function eliminarGrupo(req, res, next) {
+  try {
+    await service.eliminarGrupo(
+      req.params.eventoId, req.params.esquemaId, req.params.grupoId, req.orgId
+    );
+    res.status(204).send();
   } catch (error) { next(error); }
 }
 
@@ -255,6 +282,9 @@ module.exports = {
   listarPendientes,
   asignarAGrupo,
   quitarDeGrupo,
+  crearGrupo,
+  renombrarGrupo,
+  eliminarGrupo,
   obtenerPresets,
   descargarExcelGrupos,
   descargarExcelGrupoIndividual,
