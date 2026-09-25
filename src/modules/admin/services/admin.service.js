@@ -50,6 +50,7 @@ async function calcularStats(desde, hasta) {
     inscriptosAnt,
     revenueAnt,
     eventosAnt,
+    landing,
   ] = await Promise.all([
     adminRepository.statsUsuarios(desde, hasta),
     adminRepository.statsOrganizaciones(desde, hasta),
@@ -61,6 +62,7 @@ async function calcularStats(desde, hasta) {
     adminRepository.statsInscriptos(desdeAnterior, hastaAnterior),
     adminRepository.statsRevenue(desdeAnterior, hastaAnterior),
     adminRepository.statsEventos(desdeAnterior, hastaAnterior),
+    adminRepository.statsLanding(desde, hasta),
   ]);
   return {
     usuarios: {
@@ -91,6 +93,11 @@ async function calcularStats(desde, hasta) {
       total: revenue.total,
       variacion: calcularVariacion(revenue.total, revenueAnt.total),
       evolucion: rellenarDias(revenue.porDia, desde, hasta),
+    },
+    landing: {
+      totalMeGusta: landing.total,
+      topFunciones: landing.topFunciones.map((f) => ({ funcion: f.funcion, votos: Number(f.votos) })),
+      sugerencias: { nuevas: landing.nuevas, ultimas: landing.ultimas },
     },
   };
 }

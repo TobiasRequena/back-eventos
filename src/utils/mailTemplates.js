@@ -5,6 +5,7 @@
  * Diseño minimalista pero prolijo — funciona en todos los clientes de mail.
  */
 const descripcionAHtml = require('./descripcionHtml');
+const escapeHtml = require('./escapeHtml');
 
 function templateConfirmacionInscripcion({ participante, evento, grupo = null }) {
   const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
@@ -434,7 +435,39 @@ function templatePagoRechazado({ participante, evento }) {
   };
 }
 
+function templateGaleriaHabilitada({ nombre, evento, link }) {
+  const nombreEvento = escapeHtml(evento.nombre);
+  return {
+    subject: `¡Terminó ${evento.nombre}! Ya podés subir las fotos`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Se habilitó la galería de tu evento
+        </h1>
+        <p>Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+        <p><strong>${nombreEvento}</strong> terminó. Ya podés subir las fotos del encuentro desde la sección <strong>Galería</strong> del evento: van a aparecer en la página de Talita Encuentro.</p>
+        <p style="text-align: center; margin: 28px 0;">
+          <a href="${link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">
+            Subir fotos
+          </a>
+        </p>
+        <p style="color: #6b7280; font-size: 14px;">Subí solo fotos en las que las personas (y, si hay menores, sus madres, padres o tutores) hayan dado permiso para aparecer.</p>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+      </body>
+      </html>
+    `,
+  };
+}
+
 module.exports = {
+  templateGaleriaHabilitada,
   templateConfirmacionInscripcion,
   templateVinculoAceptado,
   templateVinculoRechazado,

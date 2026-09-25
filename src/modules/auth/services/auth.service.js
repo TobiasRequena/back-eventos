@@ -76,6 +76,7 @@ async function registrar({ nombre, apellido, email, contrasena, organizacion }) 
         instagram: organizacion?.instagram,
         twitter: organizacion?.twitter,
         facebook: organizacion?.facebook,
+        mostrarEnLanding: organizacion?.mostrarEnLanding,
       },
       trx
     );

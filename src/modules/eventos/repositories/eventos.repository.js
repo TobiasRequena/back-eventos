@@ -53,6 +53,7 @@ async function crear(datos, trx = db) {
       requiere_autorizacion_menores: datos.requiereAutorizacionMenores ?? false,
       autorizacion_template_url: datos.autorizacionTemplateUrl ?? null,
       solicita_contacto_emergencia: datos.solicitaContactoEmergencia ?? false,
+      mostrar_en_landing: datos.mostrarEnLanding ?? false,
     })
     .returning('*');
 

@@ -47,7 +47,7 @@ async function crearUsuario({ nombre, apellido, email, contrasenaHash }, trx = d
  * (es_implicita = true) como para la que el usuario completa a mano en el registro.
  */
 async function crearOrganizacion(
-    { nombre, esImplicita, sitioWeb, instagram, twitter, facebook },
+    { nombre, esImplicita, sitioWeb, instagram, twitter, facebook, mostrarEnLanding },
     trx = db
 ) {
     const [organizacion] = await trx('organizacion')
@@ -58,6 +58,7 @@ async function crearOrganizacion(
             instagram: instagram ?? null,
             twitter: twitter ?? null,
             facebook: facebook ?? null,
+            mostrar_en_landing: mostrarEnLanding ?? false,
             configuracion: {}, // JSONB vacío por ahora, libre para el futuro
             estado_facturacion: 'sin_pagos', // estado inicial, no hay eventos creados todavía
         })

@@ -6,6 +6,7 @@ const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const requerirRol = require('../../../middlewares/requerirRol');
 const verificarPertenenciaOrganizacion = require('../../../middlewares/verificarPertenenciaOrganizacion');
+const upload = require('../../../middlewares/upload');
 const {
   completarOrganizacionSchema,
   invitarMiembroSchema,
@@ -24,6 +25,14 @@ router.patch(
   verificarPertenenciaOrganizacion(),
   validate(completarOrganizacionSchema),
   organizacionesController.completar
+);
+
+router.post(
+  '/:id/logo',
+  verificarPertenenciaOrganizacion(),
+  requerirRol('admin'),
+  upload.single('archivo'),
+  organizacionesController.subirLogo
 );
 
 router.get(

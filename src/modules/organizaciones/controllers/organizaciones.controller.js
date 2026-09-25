@@ -20,7 +20,7 @@ async function listarMias(req, res, next) {
 async function completar(req, res, next) {
   try {
     const { id } = req.params;
-    const { nombre, sitioWeb, instagram, twitter, facebook } = req.body;
+    const { nombre, sitioWeb, instagram, twitter, facebook, mostrarEnLanding } = req.body;
 
     const organizacion = await organizacionesService.completarOrganizacion(id, {
       nombre,
@@ -28,6 +28,7 @@ async function completar(req, res, next) {
       instagram,
       twitter,
       facebook,
+      mostrarEnLanding,
     });
 
     res.status(200).json({ organizacion });
@@ -95,6 +96,18 @@ async function obtener(req, res, next) {
   }
 }
 
+/**
+ * POST /api/v1/organizaciones/:id/logo (multipart, campo "archivo")
+ */
+async function subirLogo(req, res, next) {
+  try {
+    const organizacion = await organizacionesService.subirLogo(req.params.id, req.file);
+    res.status(200).json({ organizacion });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function salir(req, res, next) {
   try {
     await organizacionesService.salirDeOrganizacion(req.params.id, req.usuario.sub);
@@ -120,4 +133,4 @@ async function actualizarRol(req, res, next) {
   }
 }
 
-module.exports = { listarMias, completar, listarMiembros, invitarMiembro, quitarMiembro, obtener, salir, actualizarRol };
+module.exports = { listarMias, completar, subirLogo, listarMiembros, invitarMiembro, quitarMiembro, obtener, salir, actualizarRol };

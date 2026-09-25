@@ -42,6 +42,7 @@ const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabaj
 const routerSoporte = require('./modules/soporte/routes/soporte.routes');
 const routerAdmin = require('./modules/admin/routes/admin.routes');
 const routerComunicaciones = require('./modules/comunicaciones/routes/comunicaciones.routes');
+const { routerPublico: landingPublico, routerGaleria: landingGaleria } = require('./modules/landing/routes/landing.routes');
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -131,6 +132,10 @@ app.use('/api/v1/soporte', routerSoporte);
 
 //Admin
 app.use('/api/v1/admin', routerAdmin);
+
+//Landing: datos públicos de la página principal y galería de fotos de cada evento
+app.use('/api/v1/landing', landingPublico);
+app.use('/api/v1/eventos', landingGaleria);
 
 //Comunicaciones
 app.use('/api/v1/eventos/:eventoId/comunicaciones', routerComunicaciones);

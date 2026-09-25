@@ -30,6 +30,24 @@ async function optimizarImagen(buffer) {
 }
 
 /**
+ * Valida, optimiza a WebP y sube una imagen a R2 con la key indicada.
+ * La usan la galería de la landing y el logo de la organización.
+ * Devuelve el tamaño final en bytes.
+ */
+async function subirImagen(file, key) {
+  if (!TIPOS_MIME_PERMITIDOS_IMAGEN.includes(file.mimetype)) {
+    const error = new Error('La imagen debe ser jpg, png o webp');
+    error.status = 400;
+    throw error;
+  }
+  const buffer = await optimizarImagen(file.buffer);
+  await s3Client.send(
+    new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key, Body: buffer, ContentType: 'image/webp' })
+  );
+  return buffer.length;
+}
+
+/**
  * Elimina un archivo de R2 y de la base de datos.
  * Función interna reutilizable — la usamos para limpiar la portada vieja
  * antes de subir una nueva.
@@ -184,4 +202,4 @@ async function subirAutorizacionTemplate(file, eventoId, usuarioId) {
   return construirUrlPublica(key);
 }
 
-module.exports = { subirArchivo, obtenerArchivo, eliminarArchivo, subirAutorizacionTemplate };
+module.exports = { subirArchivo, obtenerArchivo, eliminarArchivo, subirAutorizacionTemplate, subirImagen };
