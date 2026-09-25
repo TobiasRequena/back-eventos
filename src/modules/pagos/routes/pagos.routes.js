@@ -4,6 +4,7 @@ const pagosController = require('../controllers/pagos.controller');
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
+const { limiterPublico } = require('../../../middlewares/rateLimit');
 const { pagarTramoAdelanteSchema, eventoIdParamSchema } = require('../schemas/pagos.schema');
 
 // Webhook público
@@ -26,12 +27,8 @@ router.post(
   pagosController.pagarTramoAdelantado
 );
 
-router.get(
-  '/tramos',
-  autenticar,
-  resolverOrganizacionActiva,
-  pagosController.listarTramos
-);
+// Público: precios de la plataforma, los muestra la landing
+router.get('/tramos', limiterPublico, pagosController.listarTramos);
 
 router.get(
   '/eventos/:eventoId/historial',
