@@ -62,6 +62,7 @@ const completarOrganizacionSchema = z.object({
   body: z.object({
     nombre: z.string().min(1, 'El nombre es obligatorio').max(150),
     ...redesShape,
+    mostrarEnLanding: z.boolean().optional(),
   }),
 });
 

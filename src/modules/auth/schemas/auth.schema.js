@@ -11,6 +11,7 @@ const registerSchema = z.object({
             .object({
                 nombre: z.string().min(1, 'El nombre de la organización es obligatorio').max(150),
                 ...redesShape,
+                mostrarEnLanding: z.boolean().optional(),
             })
             .optional(),
     }),

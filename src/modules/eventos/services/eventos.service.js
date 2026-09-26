@@ -72,6 +72,7 @@ async function crearEvento(orgId, usuarioId, datos) {
         configCertificado: datos.configCertificado,
         autorizacionTemplateUrl: datos.autorizacionTemplateUrl,
         solicitaContactoEmergencia: datos.solicitaContactoEmergencia,
+        mostrarEnLanding: datos.mostrarEnLanding,
       },
       trx
     );
@@ -123,7 +124,7 @@ async function crearEvento(orgId, usuarioId, datos) {
     };
   });
 
-  invalidar(`org:${orgId}`);
+  invalidar(`org:${orgId}`, 'landing');
   return resultado;
 }
 
@@ -278,9 +279,10 @@ async function editarEvento(id, orgId, datos) {
   if (datos.configCertificado !== undefined) datosDb.config_certificado = datos.configCertificado;
   if (datos.autorizacionTemplateUrl !== undefined) datosDb.autorizacion_template_url = datos.autorizacionTemplateUrl;
   if (datos.solicitaContactoEmergencia !== undefined) datosDb.solicita_contacto_emergencia = datos.solicitaContactoEmergencia;
+  if (datos.mostrarEnLanding !== undefined) datosDb.mostrar_en_landing = datos.mostrarEnLanding;
 
   const eventoActualizado = await eventosRepository.actualizar(id, datosDb);
-  invalidar(`evento:${id}`, `org:${orgId}`);
+  invalidar(`evento:${id}`, `org:${orgId}`, 'landing');
   return eventoActualizado;
 }
 
@@ -290,7 +292,7 @@ async function editarEvento(id, orgId, datos) {
 async function eliminarEvento(id, orgId) {
   await obtenerEvento(id, orgId); // valida existencia + pertenencia, descarta el resultado
   await eventosRepository.eliminar(id);
-  invalidar(`evento:${id}`, `org:${orgId}`);
+  invalidar(`evento:${id}`, `org:${orgId}`, 'landing');
 }
 
 /**

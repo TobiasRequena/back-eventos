@@ -1,6 +1,9 @@
 const { db } = require('../../../config/db');
 const organizacionesRepository = require('../repositories/organizaciones.repository');
 const authRepository = require('../../auth/repositories/auth.repository');
+const archivosService = require('../../archivos/services/archivos.service');
+const { construirUrlPublica } = require('../../../utils/storage');
+const { invalidar } = require('../../../utils/cache');
 
 /**
  * Completa los datos de una organización implícita (le pone nombre real
@@ -17,7 +20,28 @@ async function completarOrganizacion(orgId, { nombre, ...redes }, trx) {
     throw error;
   }
 
-  return organizacionesRepository.actualizar(orgId, { nombre, esImplicita: false, ...redes }, trx);
+  const actualizada = await organizacionesRepository.actualizar(orgId, { nombre, esImplicita: false, ...redes }, trx);
+  invalidar('landing');
+  return actualizada;
+}
+
+/**
+ * Sube (o reemplaza) el logo de la organización. La key es fija por org, así
+ * que el logo nuevo pisa al anterior; el ?v= evita que el navegador muestre el viejo.
+ */
+async function subirLogo(orgId, file) {
+  if (!file) {
+    const error = new Error('No se recibió ningún archivo');
+    error.status = 400;
+    throw error;
+  }
+  const key = `logo_organizacion/${orgId}.webp`;
+  await archivosService.subirImagen(file, key);
+  const organizacion = await organizacionesRepository.actualizar(orgId, {
+    logoUrl: `${construirUrlPublica(key)}?v=${Date.now()}`,
+  });
+  invalidar('landing');
+  return organizacion;
 }
 
 /**
@@ -206,6 +230,7 @@ module.exports = {
   invitarMiembro,
   quitarMiembro,
   obtenerOrganizacion,
+  subirLogo,
   salirDeOrganizacion,
   actualizarRolMiembro,
 };

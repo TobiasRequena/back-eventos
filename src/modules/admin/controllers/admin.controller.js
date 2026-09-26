@@ -8,9 +8,9 @@ async function stats(req, res, next) {
       return res.status(400).json({ error: { message: 'Falta desde o hasta en los query params' } });
     }
 
-    const fechaDesde = new Date(desde);
-    const fechaHasta = new Date(hasta);
-    fechaHasta.setHours(23, 59, 59, 999);
+    // Días completos en hora argentina, sin depender de la zona horaria del server
+    const fechaDesde = new Date(`${desde}T00:00:00-03:00`);
+    const fechaHasta = new Date(`${hasta}T23:59:59.999-03:00`);
 
     if (isNaN(fechaDesde) || isNaN(fechaHasta)) {
       return res.status(400).json({ error: { message: 'Formato de fecha inválido. Usá YYYY-MM-DD' } });

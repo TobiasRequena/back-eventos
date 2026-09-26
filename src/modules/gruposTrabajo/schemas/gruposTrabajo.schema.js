@@ -34,6 +34,7 @@ const crearEsquemaSchema = z.object({
     modoTamano: z.enum(['por_cantidad', 'por_tamano']),
     valorTamano: z.number().int().positive(),
     mantenerGruposInscripcion: z.boolean().default(false),
+    asignacionManual: z.boolean().default(false),
     modoNombrado: z.enum(['por_grupo']).default('por_grupo'),
     accionSinNombres: z.enum(['bloquear_generacion', 'reciclar_numerado']).default('reciclar_numerado'),
     nombresPreset: z.enum(['letras', 'colores', 'animales', 'comidas', 'custom']).default('letras'),
@@ -52,6 +53,7 @@ const editarEsquemaSchema = z.object({
     modoTamano: z.enum(['por_cantidad', 'por_tamano']).optional(),
     valorTamano: z.number().int().positive().optional(),
     mantenerGruposInscripcion: z.boolean().optional(),
+    asignacionManual: z.boolean().optional(),
     accionSinNombres: z.enum(['bloquear_generacion', 'reciclar_numerado']).optional(),
     nombresPreset: z.enum(['letras', 'colores', 'animales', 'comidas', 'custom']).optional(),
     nombresLista: z.array(z.string()).optional(),
@@ -113,7 +115,28 @@ const asignarAGrupoSchema = z.object({
     grupoId: z.string().uuid(),
   }),
   body: z.object({
-    participanteId: z.string().uuid(),
+    participanteIds: z.array(z.string().uuid()).min(1),
+  }),
+});
+
+const crearGrupoSchema = z.object({
+  params: z.object({
+    eventoId: z.string().uuid(),
+    esquemaId: z.string().uuid(),
+  }),
+  body: z.object({
+    nombre: z.string().trim().min(1).max(100).optional(),
+  }),
+});
+
+const renombrarGrupoSchema = z.object({
+  params: z.object({
+    eventoId: z.string().uuid(),
+    esquemaId: z.string().uuid(),
+    grupoId: z.string().uuid(),
+  }),
+  body: z.object({
+    nombre: z.string().trim().min(1).max(100),
   }),
 });
 
@@ -163,6 +186,8 @@ module.exports = {
   reordenarTandasSchema,
   excluirParticipantesSchema,
   asignarAGrupoSchema,
+  crearGrupoSchema,
+  renombrarGrupoSchema,
   quitarDeGrupoSchema,
   esquemaIdParamSchema,
   eventoIdParamSchema,

@@ -51,6 +51,7 @@ const crearEventoSchema = z.object({
       configCertificado: z.string().optional().default('no'),
       autorizacionTemplateUrl: z.string().nullable().optional(),
       solicitaContactoEmergencia: z.boolean().optional().default(false),
+      mostrarEnLanding: z.boolean().optional().default(false),
     })
     .refine((data) => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
       message: 'fechaFin debe ser igual o posterior a fechaInicio',
@@ -87,6 +88,7 @@ const editarEventoSchema = z.object({
     configCertificado: z.string().optional(),
     autorizacionTemplateUrl: z.string().nullable().optional(),
     solicitaContactoEmergencia: z.boolean().optional(),
+    mostrarEnLanding: z.boolean().optional(),
   }),
 });
 

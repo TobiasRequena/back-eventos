@@ -100,4 +100,23 @@ async function statsRevenue(desde, hasta) {
   return { total: Number(total ?? 0), porDia };
 }
 
-module.exports = { statsUsuarios, statsOrganizaciones, statsEventos, statsInscriptos, statsRevenue };
+/**
+ * Landing: me gusta en las funciones (acumulado) y sugerencias del buzón (en el período).
+ */
+async function statsLanding(desde, hasta) {
+  const [{ total }] = await db('interes_funcion').sum('votos as total');
+  const topFunciones = await db('interes_funcion')
+    .where('votos', '>', 0)
+    .orderBy('votos', 'desc')
+    .limit(5)
+    .select('funcion', 'votos');
+
+  const [{ nuevas }] = await db('sugerencia_funcion')
+    .whereBetween('creado_en', [desde, hasta])
+    .count('id as nuevas');
+  const ultimas = await db('sugerencia_funcion').orderBy('creado_en', 'desc').limit(5).select('id', 'texto', 'creado_en');
+
+  return { total: Number(total ?? 0), topFunciones, nuevas: Number(nuevas), ultimas };
+}
+
+module.exports = { statsUsuarios, statsOrganizaciones, statsEventos, statsInscriptos, statsRevenue, statsLanding };
