@@ -33,6 +33,25 @@ async function listarEventos(req, res, next) {
   }
 }
 
+/** GET /api/v1/landing/funciones */
+async function listarFunciones(req, res, next) {
+  try {
+    const funciones = await getOrSet('landing', 'funciones', () => landingRepository.listarFunciones());
+    publico(res, { funciones });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Los votos solo valen para funciones que están en funcion_landing
+async function validarFuncion(funcion, trx) {
+  if (!(await landingRepository.existeFuncion(funcion, trx))) {
+    const error = new Error('Función desconocida');
+    error.status = 400;
+    throw error;
+  }
+}
+
 /** GET /api/v1/landing/organizaciones */
 async function listarOrganizaciones(req, res, next) {
   try {
@@ -81,6 +100,7 @@ async function marcarMeInteresa(req, res, next) {
   try {
     const { funcion } = req.body;
     await db.transaction(async (trx) => {
+      await validarFuncion(funcion, trx);
       const contar = req.usuario ? await landingRepository.marcarDeUsuario(req.usuario.sub, funcion, trx) : true;
       if (contar) await landingRepository.sumarVoto(funcion, 1, trx);
     });
@@ -95,6 +115,7 @@ async function quitarMeInteresa(req, res, next) {
   try {
     const { funcion } = req.params;
     await db.transaction(async (trx) => {
+      await validarFuncion(funcion, trx);
       const descontar = req.usuario
         ? await landingRepository.desmarcarDeUsuario(req.usuario.sub, funcion, trx)
         : true;
@@ -113,8 +134,9 @@ async function quitarMeInteresa(req, res, next) {
  */
 async function sincronizarMeInteresa(req, res, next) {
   try {
+    const existentes = new Set((await landingRepository.listarFunciones()).map((f) => f.nombre));
     for (const funcion of new Set(req.body.funciones)) {
-      await landingRepository.marcarDeUsuario(req.usuario.sub, funcion);
+      if (existentes.has(funcion)) await landingRepository.marcarDeUsuario(req.usuario.sub, funcion);
     }
     res.status(200).json({ funciones: await landingRepository.listarDeUsuario(req.usuario.sub) });
   } catch (error) {
@@ -235,6 +257,7 @@ async function avisarGaleriasHabilitadas() {
 
 module.exports = {
   avisarGaleriasHabilitadas,
+  listarFunciones,
   listarEventos,
   listarOrganizaciones,
   listarGaleria,

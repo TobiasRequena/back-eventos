@@ -100,6 +100,20 @@ async function marcarGaleriaNotificada(eventoId) {
   await db('evento').where({ id: eventoId }).update({ galeria_notificada: true });
 }
 
+/**
+ * "Funciones específicas" de la landing, en el orden en que se muestran.
+ */
+async function listarFunciones() {
+  return db('funcion_landing')
+    .where({ activa: true })
+    .orderBy('orden', 'asc')
+    .select('nombre', 'descripcion', 'en_desarrollo');
+}
+
+async function existeFuncion(nombre, trx = db) {
+  return !!(await trx('funcion_landing').where({ nombre, activa: true }).first('nombre'));
+}
+
 async function crearSugerencia(texto) {
   await db('sugerencia_funcion').insert({ texto });
 }
@@ -150,6 +164,8 @@ module.exports = {
   buscarFotoGaleria,
   listarEventosParaAvisarGaleria,
   marcarGaleriaNotificada,
+  listarFunciones,
+  existeFuncion,
   crearSugerencia,
   sumarVoto,
   marcarDeUsuario,

@@ -36,6 +36,7 @@ function autenticarOpcional(req, res, next) {
 const routerPublico = express.Router();
 
 routerPublico.use(limiterPublico);
+routerPublico.get('/funciones', landingController.listarFunciones);
 routerPublico.get('/eventos', landingController.listarEventos);
 routerPublico.get('/organizaciones', landingController.listarOrganizaciones);
 routerPublico.get('/galeria', landingController.listarGaleria);
