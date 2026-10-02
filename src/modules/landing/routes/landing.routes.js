@@ -1,9 +1,9 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 
 const landingController = require('../controllers/landing.controller');
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
+const autenticarOpcional = require('../../../middlewares/autenticarOpcional');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const upload = require('../../../middlewares/upload');
 const { limiterPublico } = require('../../../middlewares/rateLimit');
@@ -14,23 +14,6 @@ const {
   sincronizarSchema,
   galeriaParamsSchema,
 } = require('../schemas/landing.schema');
-
-/**
- * Como autenticar, pero sin sesión (o con un token inválido) sigue de largo
- * como anónimo en vez de cortar con 401.
- */
-function autenticarOpcional(req, res, next) {
-  const [tipo, token] = (req.headers.authorization ?? '').split(' ');
-  if (tipo === 'Bearer' && token) {
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      if (!payload.tipo || payload.tipo === 'admin') req.usuario = payload;
-    } catch {
-      // token vencido o inválido: se trata como anónimo
-    }
-  }
-  next();
-}
 
 // /api/v1/landing — público
 const routerPublico = express.Router();
