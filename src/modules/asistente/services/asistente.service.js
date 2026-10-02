@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const landingRepository = require('../../landing/repositories/landing.repository');
+const pagosService = require('../../pagos/services/pagos.service');
 const { getOrSet } = require('../../../utils/cache');
 const { enviarMail } = require('../../../utils/mail');
 const escapeHtml = require('../../../utils/escapeHtml');
@@ -191,9 +192,32 @@ async function ejecutar(nombre, input, b, ctx) {
   }
 }
 
-async function catalogoFunciones() {
-  const funciones = await getOrSet('landing', 'funciones', () => landingRepository.listarFunciones());
-  return funciones.map((f) => `- ${f.nombre}${f.en_desarrollo ? ' (EN DESARROLLO, todavía no disponible)' : ''}`).join('\n');
+const pesos = (n) => `$${Math.round(parseFloat(n)).toLocaleString('es-AR')}`;
+
+/**
+ * Lo mismo que muestran los endpoints públicos de la landing (funciones, costos, próximos eventos),
+ * con las mismas claves de caché: Tali responde con los datos reales, no de memoria.
+ */
+async function datosPublicos() {
+  const [funciones, tramos, eventos] = await Promise.all([
+    getOrSet('landing', 'funciones', () => landingRepository.listarFunciones()),
+    pagosService.listarTramos(),
+    getOrSet('landing', 'eventos', () => landingRepository.listarEventosPublicos()),
+  ]);
+  return [
+    `Funciones de la plataforma:\n${funciones
+      .map((f) => `- ${f.nombre}${f.en_desarrollo ? ' (EN DESARROLLO, todavía no disponible)' : ''}`)
+      .join('\n')}`,
+    `Costo de la plataforma por evento (monto fijo total según la cantidad de inscriptos; al pasar de tramo se paga solo la diferencia):\n${tramos
+      .map((t) => `- ${t.participantes_desde} a ${t.participantes_hasta ?? 'más'} inscriptos: ${parseFloat(t.monto_fijo) === 0 ? 'Gratis' : pesos(t.monto_fijo)}`)
+      .join('\n')}`,
+    `Próximos eventos con inscripción abierta (link: ${process.env.FRONTEND_URL}/inscribirse/CODIGO):\n${
+      eventos
+        .slice(0, 20)
+        .map((e) => `- ${e.nombre} (${e.org_nombre}), ${aLocal(new Date(e.fecha_inicio).toISOString()).replace('T', ' ')}, código ${e.codigo}`)
+        .join('\n') || 'ninguno por ahora'
+    }`,
+  ].join('\n\n');
 }
 
 /**
@@ -205,7 +229,7 @@ async function chat(mensajes, borrador, usuario) {
   const contexto = [
     `Fecha de hoy: ${new Date().toISOString().slice(0, 10)}.`,
     usuario ? `Sesión iniciada como ${usuario.email}.` : 'El usuario NO inició sesión (está en la página pública).',
-    `Funciones de la plataforma:\n${await catalogoFunciones()}`,
+    await datosPublicos(),
     `Borrador actual del evento:\n${JSON.stringify(b)}`,
   ].join('\n\n');
 
