@@ -15,6 +15,7 @@ async function crearVarios(eventoId, orgId, campos, trx = db) {
     tipo: campo.tipo,
     opciones: campo.tipo === 'seleccion' ? JSON.stringify(campo.opciones) : null,
     requerido: campo.requerido ?? false,
+    multiple: campo.tipo === 'seleccion' && (campo.multiple ?? false),
     orden: campo.orden,
   }));
 
@@ -23,38 +24,21 @@ async function crearVarios(eventoId, orgId, campos, trx = db) {
 
 /**
  * Lista los campos de formulario de un evento, ordenados según el campo `orden`.
+ * Por defecto solo los activos: los dados de baja no se piden ni se muestran.
  */
-async function listarPorEvento(eventoId) {
-  return db('campo_form').where({ evento_id: eventoId }).orderBy('orden', 'asc');
+async function listarPorEvento(eventoId, { incluirInactivos = false } = {}) {
+  const query = db('campo_form').where({ evento_id: eventoId });
+  if (!incluirInactivos) query.andWhere({ activo: true });
+  return query.orderBy('orden', 'asc');
 }
 
 async function buscarPorId(id, trx = db) {
   return trx('campo_form').where({ id }).first();
 }
 
-async function crear(eventoId, orgId, datos, trx = db) {
-  const [campo] = await trx('campo_form')
-    .insert({
-      evento_id: eventoId,
-      org_id: orgId,
-      etiqueta: datos.etiqueta,
-      tipo: datos.tipo,
-      opciones: datos.tipo === 'seleccion' ? JSON.stringify(datos.opciones) : null,
-      requerido: datos.requerido ?? false,
-      orden: datos.orden,
-    })
-    .returning('*');
-
-  return campo;
-}
-
 async function actualizar(id, datos, trx = db) {
   const [campo] = await trx('campo_form').where({ id }).update(datos).returning('*');
   return campo;
-}
-
-async function eliminar(id, trx = db) {
-  return trx('campo_form').where({ id }).del();
 }
 
 /**
@@ -70,12 +54,29 @@ async function reordenar(campos, trx = db) {
   );
 }
 
+/**
+ * Participantes del evento que respondieron un campo (para migrar respuestas
+ * cuando se renombra una opción).
+ */
+async function listarRespuestasDeCampo(eventoId, campoId, trx = db) {
+  return trx('participante')
+    .where({ evento_id: eventoId })
+    .whereRaw('respuestas_form \\? ?', [campoId])
+    .select('id', 'respuestas_form');
+}
+
+async function actualizarRespuestas(participanteId, respuestas, trx = db) {
+  return trx('participante')
+    .where({ id: participanteId })
+    .update({ respuestas_form: JSON.stringify(respuestas) });
+}
+
 module.exports = {
   crearVarios,
   listarPorEvento,
   buscarPorId,
-  crear,
   actualizar,
-  eliminar,
   reordenar,
+  listarRespuestasDeCampo,
+  actualizarRespuestas,
 };

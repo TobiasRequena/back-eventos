@@ -72,7 +72,8 @@ function validarRespuestasForm(campos, respuestas = {}) {
 
   for (const campo of campos) {
     const valor = respuestas[campo.id];
-    const tieneValor = valor !== undefined && valor !== null && valor !== '';
+    const tieneValor = valor !== undefined && valor !== null && valor !== ''
+      && !(Array.isArray(valor) && valor.length === 0);
 
     // Validar campo requerido
     if (campo.requerido && !tieneValor) {
@@ -97,7 +98,11 @@ function validarRespuestasForm(campos, respuestas = {}) {
         break;
       case 'seleccion':
         const opciones = campo.opciones || [];
-        if (!opciones.includes(valor)) {
+        // multiple: array de opciones. Se acepta también un string suelto por las
+        // respuestas guardadas antes de activar `multiple` en el campo.
+        if (Array.isArray(valor) && !campo.multiple) {
+          errores.push(`El campo "${campo.etiqueta}" admite una sola opción`);
+        } else if (![].concat(valor).every((v) => opciones.includes(v))) {
           errores.push(`El campo "${campo.etiqueta}" debe ser uno de: ${opciones.join(', ')}`);
         }
         break;

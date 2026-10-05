@@ -103,6 +103,14 @@ function resolverAtributo(participante, atributo) {
 function evaluarCondicion(valor, operador, condicionValor, condicionValor2 = null) {
   if (valor === null || valor === undefined) return false;
 
+  // campos de selección multiple: la respuesta es un array de opciones
+  if (Array.isArray(valor)) {
+    if (operador === 'igual') return valor.some((v) => String(v) === String(condicionValor));
+    if (operador === 'distinto') return valor.every((v) => String(v) !== String(condicionValor));
+    if (operador === 'contiene') return valor.some((v) => evaluarCondicion(v, 'contiene', condicionValor));
+    return false;
+  }
+
   switch (operador) {
     case 'igual': return String(valor) === String(condicionValor);
     case 'distinto': return String(valor) !== String(condicionValor);

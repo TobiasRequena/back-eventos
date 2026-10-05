@@ -94,6 +94,9 @@
 | opciones | jsonb | YES |  |
 | requerido | boolean | NO | false |
 | orden | integer | NO | 0 |
+| activo | boolean | NO | true |
+| eliminado_en | timestamp with time zone | YES |  |
+| multiple | boolean | NO | false |
 
 **PK**: id
 

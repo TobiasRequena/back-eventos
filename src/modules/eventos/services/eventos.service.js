@@ -423,7 +423,8 @@ async function calcularStatsEvento(id, evento) {
         const respuestas = fila.respuestas_form || {};
         const valor = respuestas[campo.id];
         if (valor === undefined || valor === null || valor === '') continue;
-        valores.push(valor);
+        // multiple: cada opción elegida cuenta por separado
+        valores.push(...[].concat(valor));
       }
       const totalRespuestas = valores.length;
       let stats = {};
@@ -577,7 +578,8 @@ async function generarExcelInscriptos(id, orgId) {
 
     for (const campo of campos) {
       const valor = respuestas[campo.id];
-      fila[`campo_${campo.id}`] = valor === true ? 'Sí' : valor === false ? 'No' : valor ?? '';
+      fila[`campo_${campo.id}`] = valor === true ? 'Sí' : valor === false ? 'No'
+        : Array.isArray(valor) ? valor.join(', ') : valor ?? '';
     }
 
     columnasReales.forEach((col, i) => {

@@ -12,6 +12,7 @@ const campoFormSchema = z
     tipo: z.enum(TIPO_CAMPO_FORM),
     opciones: z.array(z.string()).optional(),
     requerido: z.boolean().default(false),
+    multiple: z.boolean().default(false), // solo aplica a 'seleccion'
     orden: z.number().int().nonnegative(),
   })
   .refine(
