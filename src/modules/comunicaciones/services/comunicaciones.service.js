@@ -36,7 +36,8 @@ async function obtenerDestinatarios(eventoId, destinatarios, filtros) {
 
   return participantes.filter(p => {
     const respuestas = p.respuestas_form ?? {};
-    return filtros.every(f => respuestas[f.campo_form_id] === f.valor);
+    // en campos multiple la respuesta es un array: alcanza con que incluya el valor
+    return filtros.every(f => [].concat(respuestas[f.campo_form_id]).includes(f.valor));
   });
 }
 
