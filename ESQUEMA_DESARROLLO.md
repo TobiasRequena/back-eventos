@@ -1,4 +1,6 @@
-# Esquema actual de la base (generado desde la BD productiva — 2026-09-25)
+# Esquema de desarrollo
+
+Generado con `node scripts/generar_esquema.js <DATABASE_URL> desarrollo`. No editar a mano.
 
 ## `acreditador_sesion`
 
@@ -38,6 +40,7 @@
 | mime_type | character varying(100) | NO |  |
 | size_bytes | integer | NO |  |
 | creado_en | timestamp with time zone | NO | now() |
+| tipo | character varying(30) | YES |  |
 | pago_id | uuid | YES |  |
 
 **PK**: id
@@ -47,6 +50,7 @@
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
 - `org_id` → `organizacion.id` (ON DELETE CASCADE)
+- `pago_id` → `pago.id` (ON DELETE SET NULL)
 - `participante_id` → `participante.id` (ON DELETE CASCADE)
 - `subido_por_participante_id` → `participante.id` (ON DELETE SET NULL)
 - `subido_por_usuario_id` → `usuario.id` (ON DELETE SET NULL)
@@ -54,6 +58,7 @@
 **Índices**:
 - `archivo_pkey`: `CREATE UNIQUE INDEX archivo_pkey ON public.archivo USING btree (id)`
 - `idx_archivo_evento`: `CREATE INDEX idx_archivo_evento ON public.archivo USING btree (evento_id) WHERE (evento_id IS NOT NULL)`
+- `idx_archivo_galeria`: `CREATE INDEX idx_archivo_galeria ON public.archivo USING btree (evento_id) WHERE ((tipo)::text = 'foto_galeria'::text)`
 - `idx_archivo_org`: `CREATE INDEX idx_archivo_org ON public.archivo USING btree (org_id)`
 - `idx_archivo_participante`: `CREATE INDEX idx_archivo_participante ON public.archivo USING btree (participante_id) WHERE (participante_id IS NOT NULL)`
 
@@ -82,6 +87,23 @@
 - `bloque_taller_pkey`: `CREATE UNIQUE INDEX bloque_taller_pkey ON public.bloque_taller USING btree (id)`
 - `idx_bloque_taller_evento_id`: `CREATE INDEX idx_bloque_taller_evento_id ON public.bloque_taller USING btree (evento_id)`
 - `idx_bloque_taller_org_id`: `CREATE INDEX idx_bloque_taller_org_id ON public.bloque_taller USING btree (org_id)`
+
+## `borrador_evento`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| usuario_id | uuid | NO |  |
+| borrador | jsonb | NO | '{}'::jsonb |
+| mensajes | jsonb | NO | '[]'::jsonb |
+| actualizado_en | timestamp with time zone | NO | now() |
+
+**PK**: usuario_id
+
+**FKs**:
+- `usuario_id` → `usuario.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `borrador_evento_pkey`: `CREATE UNIQUE INDEX borrador_evento_pkey ON public.borrador_evento USING btree (usuario_id)`
 
 ## `campo_form`
 
@@ -122,8 +144,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_checkin_participante`: (participante_id)
+**Unique**: (participante_id)
 
 **FKs**:
 - `acreditador_id` → `acreditador_sesion.id` (ON DELETE CASCADE)
@@ -149,8 +170,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_checkin_taller`: (taller_id, participante_id)
+**Unique**: (taller_id, participante_id)
 
 **FKs**:
 - `acreditador_id` → `acreditador_sesion.id` (ON DELETE CASCADE)
@@ -208,8 +228,7 @@
 
 **PK**: id
 
-**Unique**:
-- `contacto_emergencia_participante_id_evento_id_key`: (participante_id, evento_id)
+**Unique**: (participante_id, evento_id)
 
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
@@ -339,8 +358,7 @@
 
 **PK**: id
 
-**Unique**:
-- `ficha_medica_participante_id_evento_id_key`: (participante_id, evento_id)
+**Unique**: (participante_id, evento_id)
 
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
@@ -352,6 +370,21 @@
 - `ficha_medica_pkey`: `CREATE UNIQUE INDEX ficha_medica_pkey ON public.ficha_medica USING btree (id)`
 - `idx_ficha_medica_evento`: `CREATE INDEX idx_ficha_medica_evento ON public.ficha_medica USING btree (evento_id)`
 - `idx_ficha_medica_participante`: `CREATE INDEX idx_ficha_medica_participante ON public.ficha_medica USING btree (participante_id)`
+
+## `funcion_landing`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| nombre | character varying(100) | NO |  |
+| descripcion | text | NO | ''::text |
+| en_desarrollo | boolean | NO | false |
+| orden | integer | NO |  |
+| activa | boolean | NO | true |
+
+**PK**: nombre
+
+**Índices**:
+- `funcion_landing_pkey`: `CREATE UNIQUE INDEX funcion_landing_pkey ON public.funcion_landing USING btree (nombre)`
 
 ## `grupo`
 
@@ -415,8 +448,7 @@
 
 **PK**: id
 
-**Unique**:
-- `grupo_trabajo_participante_grupo_trabajo_id_participante_id_key`: (grupo_trabajo_id, participante_id)
+**Unique**: (grupo_trabajo_id, participante_id)
 
 **FKs**:
 - `grupo_trabajo_id` → `grupo_trabajo.id` (ON DELETE CASCADE)
@@ -439,6 +471,9 @@
 
 **Check**: `interes_funcion_votos_check`: `CHECK ((votos >= 0))`
 
+**FKs**:
+- `funcion` → `funcion_landing.nombre` (ON DELETE CASCADE)
+
 **Índices**:
 - `interes_funcion_pkey`: `CREATE UNIQUE INDEX interes_funcion_pkey ON public.interes_funcion USING btree (funcion)`
 
@@ -453,6 +488,7 @@
 **PK**: usuario_id, funcion
 
 **FKs**:
+- `funcion` → `funcion_landing.nombre` (ON DELETE CASCADE)
 - `usuario_id` → `usuario.id` (ON DELETE CASCADE)
 
 **Índices**:
@@ -552,6 +588,7 @@
 | link_pago | character varying(500) | YES |  |
 | tramo_id | uuid | YES |  |
 | numero_cuota | smallint | YES |  |
+| total_cuotas | smallint | YES |  |
 | vencimiento | date | YES |  |
 | recordatorio_enviado | boolean | NO | false |
 | envia_qr | boolean | NO | false |
@@ -574,43 +611,6 @@
 - `idx_pago_org_evento`: `CREATE INDEX idx_pago_org_evento ON public.pago USING btree (org_id, evento_id)`
 - `idx_pago_participante`: `CREATE INDEX idx_pago_participante ON public.pago USING btree (participante_id)`
 - `pago_pkey`: `CREATE UNIQUE INDEX pago_pkey ON public.pago USING btree (id)`
-
-## `plan_pago`
-
-| Columna | Tipo | Nullable | Default |
-|---|---|---|---|
-| id | uuid | NO | gen_random_uuid() |
-| org_id | uuid | NO |  |
-| evento_id | uuid | NO |  |
-| nombre | character varying(100) | NO |  |
-| orden | smallint | NO | 0 |
-| cuota_qr | smallint | YES |  |
-
-**PK**: id
-
-**FKs**:
-- `evento_id` → `evento.id` (ON DELETE CASCADE)
-- `org_id` → `organizacion.id` (ON DELETE CASCADE)
-
-## `plan_pago_cuota`
-
-| Columna | Tipo | Nullable | Default |
-|---|---|---|---|
-| id | uuid | NO | gen_random_uuid() |
-| plan_pago_id | uuid | NO |  |
-| numero | smallint | NO |  |
-| porcentaje | numeric(5,2) | YES |  |
-| monto | numeric(12,2) | YES |  |
-| vencimiento | date | YES |  |
-
-**PK**: id
-
-**Check**: `CHECK ((porcentaje IS NULL) OR (monto IS NULL))` — ambos NULL = "el resto" (última cuota)
-
-**Unique**: (plan_pago_id, numero)
-
-**FKs**:
-- `plan_pago_id` → `plan_pago.id` (ON DELETE CASCADE)
 
 ## `participante`
 
@@ -645,9 +645,9 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_participante_dni_evento`: (evento_id, dni)
-- `uq_participante_qr`: (qr_personal)
+**Unique**: (evento_id, dni)
+
+**Unique**: (qr_personal)
 
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
@@ -677,8 +677,7 @@
 
 **PK**: id
 
-**Unique**:
-- `participante_esquema_pendiente_esquema_id_participante_id_key`: (esquema_id, participante_id)
+**Unique**: (esquema_id, participante_id)
 
 **FKs**:
 - `esquema_id` → `esquema_grupos_trabajo.id` (ON DELETE CASCADE)
@@ -700,8 +699,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_participante_taller`: (participante_id, taller_id)
+**Unique**: (participante_id, taller_id)
 
 **FKs**:
 - `org_id` → `organizacion.id` (ON DELETE CASCADE)
@@ -713,6 +711,54 @@
 - `idx_participante_taller_taller`: `CREATE INDEX idx_participante_taller_taller ON public.participante_taller USING btree (taller_id)`
 - `participante_taller_pkey`: `CREATE UNIQUE INDEX participante_taller_pkey ON public.participante_taller USING btree (id)`
 - `uq_participante_taller`: `CREATE UNIQUE INDEX uq_participante_taller ON public.participante_taller USING btree (participante_id, taller_id)`
+
+## `plan_pago`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| org_id | uuid | NO |  |
+| evento_id | uuid | NO |  |
+| nombre | character varying(100) | NO |  |
+| orden | smallint | NO | 0 |
+| cuota_qr | smallint | YES |  |
+
+**PK**: id
+
+**FKs**:
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
+- `org_id` → `organizacion.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `idx_plan_pago_evento`: `CREATE INDEX idx_plan_pago_evento ON public.plan_pago USING btree (evento_id)`
+- `plan_pago_pkey`: `CREATE UNIQUE INDEX plan_pago_pkey ON public.plan_pago USING btree (id)`
+
+## `plan_pago_cuota`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| plan_pago_id | uuid | NO |  |
+| numero | smallint | NO |  |
+| porcentaje | numeric(5,2) | YES |  |
+| monto | numeric(12,2) | YES |  |
+| vencimiento | date | YES |  |
+
+**PK**: id
+
+**Check**: `plan_pago_cuota_check`: `CHECK (((porcentaje IS NULL) OR (monto IS NULL)))`
+**Check**: `plan_pago_cuota_monto_check`: `CHECK ((monto > (0)::numeric))`
+**Check**: `plan_pago_cuota_numero_check`: `CHECK (((numero >= 1) AND (numero <= 12)))`
+**Check**: `plan_pago_cuota_porcentaje_check`: `CHECK (((porcentaje > (0)::numeric) AND (porcentaje < (100)::numeric)))`
+
+**Unique**: (plan_pago_id, numero)
+
+**FKs**:
+- `plan_pago_id` → `plan_pago.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `plan_pago_cuota_pkey`: `CREATE UNIQUE INDEX plan_pago_cuota_pkey ON public.plan_pago_cuota USING btree (id)`
+- `plan_pago_cuota_plan_pago_id_numero_key`: `CREATE UNIQUE INDEX plan_pago_cuota_plan_pago_id_numero_key ON public.plan_pago_cuota USING btree (plan_pago_id, numero)`
 
 ## `punto_acceso`
 
@@ -747,8 +793,7 @@
 
 **PK**: id
 
-**Unique**:
-- `reset_password_token_token_key`: (token)
+**Unique**: (token)
 
 **FKs**:
 - `usuario_id` → `usuario.id` (ON DELETE CASCADE)
@@ -839,8 +884,7 @@
 
 **PK**: id
 
-**Unique**:
-- `tramo_precio_plataforma_participantes_desde_key`: (participantes_desde)
+**Unique**: (participantes_desde)
 
 **Índices**:
 - `tramo_precio_plataforma_participantes_desde_key`: `CREATE UNIQUE INDEX tramo_precio_plataforma_participantes_desde_key ON public.tramo_precio_plataforma USING btree (participantes_desde)`
@@ -862,8 +906,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_usuario_email`: (email)
+**Unique**: (email)
 
 **Índices**:
 - `uq_usuario_email`: `CREATE UNIQUE INDEX uq_usuario_email ON public.usuario USING btree (email)`
@@ -881,8 +924,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_usuario_evento`: (usuario_id, evento_id)
+**Unique**: (usuario_id, evento_id)
 
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
@@ -906,8 +948,7 @@
 
 **PK**: id
 
-**Unique**:
-- `uq_usuario_organizacion`: (usuario_id, org_id)
+**Unique**: (usuario_id, org_id)
 
 **FKs**:
 - `org_id` → `organizacion.id` (ON DELETE CASCADE)
@@ -986,3 +1027,43 @@
 - **tipo_pago**: `creacion_evento`, `inscripcion`
 - **tipo_sangre**: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`
 - **universo_base_esquema**: `inscriptos`, `acreditados`
+
+## Funciones
+
+- `armor(bytea)`
+- `armor(bytea, text[], text[])`
+- `crypt(text, text)`
+- `dearmor(text)`
+- `decrypt(bytea, bytea, text)`
+- `decrypt_iv(bytea, bytea, bytea, text)`
+- `digest(bytea, text)`
+- `digest(text, text)`
+- `encrypt(bytea, bytea, text)`
+- `encrypt_iv(bytea, bytea, bytea, text)`
+- `fips_mode()`
+- `gen_random_bytes(integer)`
+- `gen_random_uuid()`
+- `gen_salt(text)`
+- `gen_salt(text, integer)`
+- `hmac(bytea, bytea, text)`
+- `hmac(text, text, text)`
+- `pgp_armor_headers(text, OUT key text, OUT value text)`
+- `pgp_key_id(bytea)`
+- `pgp_pub_decrypt(bytea, bytea)`
+- `pgp_pub_decrypt(bytea, bytea, text)`
+- `pgp_pub_decrypt(bytea, bytea, text, text)`
+- `pgp_pub_decrypt_bytea(bytea, bytea)`
+- `pgp_pub_decrypt_bytea(bytea, bytea, text)`
+- `pgp_pub_decrypt_bytea(bytea, bytea, text, text)`
+- `pgp_pub_encrypt(text, bytea)`
+- `pgp_pub_encrypt(text, bytea, text)`
+- `pgp_pub_encrypt_bytea(bytea, bytea)`
+- `pgp_pub_encrypt_bytea(bytea, bytea, text)`
+- `pgp_sym_decrypt(bytea, text)`
+- `pgp_sym_decrypt(bytea, text, text)`
+- `pgp_sym_decrypt_bytea(bytea, text)`
+- `pgp_sym_decrypt_bytea(bytea, text, text)`
+- `pgp_sym_encrypt(text, text)`
+- `pgp_sym_encrypt(text, text, text)`
+- `pgp_sym_encrypt_bytea(bytea, text)`
+- `pgp_sym_encrypt_bytea(bytea, text, text)`

@@ -41,7 +41,6 @@ const {
 const routerPagos = require('./modules/pagos/routes/pagos.routes');
 const routerGruposTrabajo = require('./modules/gruposTrabajo/routes/gruposTrabajo.routes');
 const routerSoporte = require('./modules/soporte/routes/soporte.routes');
-const routerAsistente = require('./modules/asistente/routes/asistente.routes');
 const routerAdmin = require('./modules/admin/routes/admin.routes');
 const routerComunicaciones = require('./modules/comunicaciones/routes/comunicaciones.routes');
 const { routerPublico: landingPublico, routerGaleria: landingGaleria } = require('./modules/landing/routes/landing.routes');
@@ -135,8 +134,10 @@ app.use('/api/v1/eventos/:eventoId/esquemas-grupos-trabajo', routerGruposTrabajo
 //Soporte
 app.use('/api/v1/soporte', routerSoporte);
 
-//Asistente IA para armar eventos
-app.use('/api/v1/asistente', routerAsistente);
+//Asistente IA para armar eventos (Tali). Apagado salvo TALI_ACTIVO=true: el require crea el cliente de Anthropic y sin ANTHROPIC_API_KEY falla
+if (process.env.TALI_ACTIVO === 'true') {
+  app.use('/api/v1/asistente', require('./modules/asistente/routes/asistente.routes'));
+}
 
 //Admin
 app.use('/api/v1/admin', routerAdmin);
