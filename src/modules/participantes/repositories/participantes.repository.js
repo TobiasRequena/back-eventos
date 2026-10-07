@@ -80,7 +80,16 @@ async function listarPorEvento(eventoId, filtros = {}) {
       db.raw('(ficha_medica.id IS NOT NULL) as tiene_ficha_medica'),
       db.raw('(contacto_emergencia.id IS NOT NULL) as tiene_contacto_emergencia'),
       db.raw('(participante.autorizacion_url IS NOT NULL) as tiene_autorizacion'),
-      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado')
+      db.raw('(participante.certificado_url IS NOT NULL) as tiene_certificado'),
+      // Resumen de cuotas: en un mismo evento hay quien pagó todo y quien debe cuotas
+      db.raw(`(SELECT count(*)::int FROM pago
+               WHERE pago.participante_id = participante.id AND pago.tipo = 'inscripcion') as cuotas_total`),
+      db.raw(`(SELECT count(*)::int FROM pago
+               WHERE pago.participante_id = participante.id AND pago.tipo = 'inscripcion'
+                 AND pago.estado = 'aprobado') as cuotas_aprobadas`),
+      db.raw(`(SELECT count(*)::int FROM pago
+               WHERE pago.participante_id = participante.id AND pago.tipo = 'inscripcion'
+                 AND pago.estado <> 'aprobado' AND pago.vencimiento < current_date) as cuotas_vencidas`)
     );
 
   if (filtros.grupoId) query.andWhere('participante.grupo_id', filtros.grupoId);

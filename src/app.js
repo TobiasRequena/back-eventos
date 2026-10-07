@@ -31,6 +31,7 @@ const {
 } = require('./modules/grupos/routes/grupos.routes');
 const routerFormularios = require('./modules/formularios/routes/formularios.routes');
 const routerZonasCosto = require('./modules/zonasCosto/routes/zonasCosto.routes');
+const routerPlanesPago = require('./modules/planesPago/routes/planesPago.routes');
 const {
   routerPublico: acreditacionPublico,
   routerProtegido: acreditacionProtegido,
@@ -116,6 +117,9 @@ app.use('/api/v1/eventos', routerFormularios);
 
 // Zonas de costo
 app.use('/api/v1/eventos', routerZonasCosto);
+
+// Planes de pago en cuotas
+app.use('/api/v1/eventos', routerPlanesPago);
 
 // Acreditación
 app.use('/api/v1/acreditacion', acreditacionPublico);

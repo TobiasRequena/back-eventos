@@ -22,6 +22,7 @@ async function crear(datos, trx = db) {
       org_id: orgId, // ← usar la variable, no datos.orgId
       evento_id: datos.eventoId ?? null,
       participante_id: datos.participanteId ?? null,
+      pago_id: datos.pagoId ?? null,
       subido_por_usuario_id: datos.subidoPorUsuarioId ?? null,
       subido_por_participante_id: datos.subidoPorParticipanteId ?? null,
       key: datos.key,
@@ -60,11 +61,4 @@ async function eliminar(id, trx = db) {
   return trx('archivo').where({ id }).del();
 }
 
-async function buscarComprobantePorParticipante(participanteId) {
-  return db('archivo')
-    .where({ participante_id: participanteId })
-    .orderBy('creado_en', 'desc')
-    .first();
-}
-
-module.exports = { crear, buscarPorId, buscarPortadaDeEvento, eliminar, buscarComprobantePorParticipante };
+module.exports = { crear, buscarPorId, buscarPortadaDeEvento, eliminar };

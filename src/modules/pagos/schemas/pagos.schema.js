@@ -15,7 +15,13 @@ const eventoIdParamSchema = z.object({
   }),
 });
 
+const revisarCuotaSchema = z.object({
+  params: z.object({ pagoId: z.string().uuid('Id de cuota inválido') }),
+  body: z.object({ estado: z.enum(['aprobado', 'rechazado']) }),
+});
+
 module.exports = {
+  revisarCuotaSchema,
   pagarTramoAdelanteSchema,
   eventoIdParamSchema
 };

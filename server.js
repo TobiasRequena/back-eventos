@@ -6,6 +6,7 @@ const { initSockets } = require('./src/sockets');
 const { verificarConexion } = require('./src/config/db');
 const { purgarEliminados } = require('./src/modules/participantes/repositories/participantes.repository');
 const { avisarGaleriasHabilitadas } = require('./src/modules/landing/controllers/landing.controller');
+const { enviarRecordatoriosCuotas } = require('./src/modules/pagos/services/pagosInscripcion.service');
 
 // Purga automática de participantes eliminados hace más de 90 días
 // Corre una vez al día al levantar el servidor y cada 24hs después
@@ -47,12 +48,32 @@ async function programarAvisoGaleria() {
     setInterval(avisar, INTERVALO);
 }
 
+// Recordatorio por mail de cuotas que vencen en los próximos días
+async function programarRecordatoriosCuotas() {
+    const INTERVALO = 24 * 60 * 60 * 1000; // 24 horas en ms
+
+    async function recordar() {
+        try {
+            const cantidad = await enviarRecordatoriosCuotas();
+            if (cantidad > 0) {
+                console.log(`[cuotas] ${cantidad} recordatorio(s) de vencimiento enviado(s)`);
+            }
+        } catch (err) {
+            console.error('[cuotas] Error al enviar recordatorios:', err.message);
+        }
+    }
+
+    await recordar();
+    setInterval(recordar, INTERVALO);
+}
+
 const PORT = process.env.PORT || 3001;
 
 async function iniciar() {
     await verificarConexion();
     programarPurga(); // sin await — corre en background
     programarAvisoGaleria();
+    programarRecordatoriosCuotas();
 
     const httpServer = http.createServer(app);
     initSockets(httpServer);

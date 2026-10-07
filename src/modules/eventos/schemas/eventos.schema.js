@@ -2,6 +2,7 @@ const { z } = require('zod');
 const { bloqueTallerSchema } = require('../../talleres/schemas/talleres.schema');
 const { tallerSueltoSchema } = require('../../talleres/schemas/talleres.schema');
 const { zonaCostoItemSchema } = require('../../zonasCosto/schemas/zonasCosto.schema');
+const { planPagoItemSchema } = require('../../planesPago/schemas/planesPago.schema');
 
 const POLITICA_MENOR = ['obligatorio', 'opcional', 'no_aplica'];
 const TIPO_CAMPO_FORM = ['texto', 'numero', 'fecha', 'seleccion', 'booleano'];
@@ -43,6 +44,7 @@ const crearEventoSchema = z.object({
       aliasCobro: z.string().max(50).optional(),
       costo: z.number().nonnegative().default(0),
       zonasCosto: z.array(zonaCostoItemSchema).optional().default([]),
+      planesPago: z.array(planPagoItemSchema).max(10).optional().default([]),
       camposForm: z.array(campoFormSchema).optional().default([]),
       cupoMaximo: z.number().int().positive().nullable().optional(),
       bloquesTaller: z.array(bloqueTallerSchema).optional().default([]),

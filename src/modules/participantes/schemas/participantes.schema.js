@@ -31,6 +31,7 @@ const crearParticipanteSchema = z.object({
     tallerIds: z.array(z.string().uuid()).optional().default([]),
     estadoPago: z.enum(['pendiente', 'aprobado', 'no_aplica', 'rechazado']).optional(),
     zonaCostoId: z.string().uuid('zonaCostoId inválido').nullable().optional(),
+    planPagoId: z.string().uuid('planPagoId inválido').nullable().optional(),
 
     // Respuestas al formulario dinámico del evento
     // Objeto libre: { [campo_form_id]: valor }

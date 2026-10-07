@@ -1,5 +1,5 @@
 const archivosService = require('../services/archivos.service');
-const participantesRepository = require('../../participantes/repositories/participantes.repository');
+const pagosInscripcionService = require('../../pagos/services/pagosInscripcion.service');
 
 /**
  * POST /api/v1/archivos
@@ -20,6 +20,12 @@ async function subir(req, res, next) {
       ? 'comprobante_pago'
       : 'portada_evento';
 
+    // El comprobante se liga a una cuota: se resuelve antes de subir para no
+    // guardar archivos de cuotas inválidas o ya aprobadas.
+    const cuota = contexto === 'comprobante_pago'
+      ? await pagosInscripcionService.resolverCuotaParaComprobante(req.body.participanteId, req.body.pagoId)
+      : null;
+
     const resultado = await archivosService.subirArchivo(
       req.file.buffer,
       {
@@ -32,15 +38,13 @@ async function subir(req, res, next) {
         orgId: req.body.orgId,
         eventoId: req.body.eventoId,
         participanteId: req.body.participanteId,
+        pagoId: cuota?.id,
         usuarioId: req.usuario?.sub,
       }
     );
 
-    if (resultado.participante_id && contexto === 'comprobante_pago') {
-      await participantesRepository.actualizar(
-        resultado.participante_id,
-        { estado_pago: 'pendiente_aprobacion' }
-      );
+    if (cuota) {
+      await pagosInscripcionService.registrarComprobante(cuota);
     }
 
     res.status(201).json({ archivo: resultado });

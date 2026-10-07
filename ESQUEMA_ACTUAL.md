@@ -38,6 +38,7 @@
 | mime_type | character varying(100) | NO |  |
 | size_bytes | integer | NO |  |
 | creado_en | timestamp with time zone | NO | now() |
+| pago_id | uuid | YES |  |
 
 **PK**: id
 
@@ -550,6 +551,10 @@
 | notificado_urgente | boolean | NO | false |
 | link_pago | character varying(500) | YES |  |
 | tramo_id | uuid | YES |  |
+| numero_cuota | smallint | YES |  |
+| vencimiento | date | YES |  |
+| recordatorio_enviado | boolean | NO | false |
+| envia_qr | boolean | NO | false |
 
 **PK**: id
 
@@ -569,6 +574,43 @@
 - `idx_pago_org_evento`: `CREATE INDEX idx_pago_org_evento ON public.pago USING btree (org_id, evento_id)`
 - `idx_pago_participante`: `CREATE INDEX idx_pago_participante ON public.pago USING btree (participante_id)`
 - `pago_pkey`: `CREATE UNIQUE INDEX pago_pkey ON public.pago USING btree (id)`
+
+## `plan_pago`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| org_id | uuid | NO |  |
+| evento_id | uuid | NO |  |
+| nombre | character varying(100) | NO |  |
+| orden | smallint | NO | 0 |
+| cuota_qr | smallint | YES |  |
+
+**PK**: id
+
+**FKs**:
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
+- `org_id` → `organizacion.id` (ON DELETE CASCADE)
+
+## `plan_pago_cuota`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| plan_pago_id | uuid | NO |  |
+| numero | smallint | NO |  |
+| porcentaje | numeric(5,2) | YES |  |
+| monto | numeric(12,2) | YES |  |
+| vencimiento | date | YES |  |
+
+**PK**: id
+
+**Check**: `CHECK ((porcentaje IS NULL) OR (monto IS NULL))` — ambos NULL = "el resto" (última cuota)
+
+**Unique**: (plan_pago_id, numero)
+
+**FKs**:
+- `plan_pago_id` → `plan_pago.id` (ON DELETE CASCADE)
 
 ## `participante`
 

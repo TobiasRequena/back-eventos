@@ -171,7 +171,7 @@ La inscripción de una persona a un evento. **Es la tabla central del dominio op
 Cubre **dos flujos distintos** de la plataforma en una sola tabla:
 
 1. **`tipo = 'creacion_evento'`** (RN07): Organización → Plataforma. Vía pasarela (GalioPay), automático, sin revisión manual. `participante_id` debe ser `NULL`.
-2. **`tipo = 'inscripcion'`** (RN08): Participante → Organización. Vía transferencia + comprobante, con revisión manual del Admin. `participante_id` es obligatorio.
+2. **`tipo = 'inscripcion'`** (RN08): Participante → Organización. Vía transferencia + comprobante, con revisión manual del Admin. `participante_id` es obligatorio. **Una fila por cuota**: al inscribirse se crean N filas según el plan elegido (`plan_pago`), con `numero_cuota`, `monto` (snapshot) y `vencimiento`. Pago total = una sola fila. `participante.estado_pago` es el resumen de sus cuotas (aprobado si todas lo están; `pendiente_aprobacion` si alguna tiene comprobante sin revisar).
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -180,6 +180,13 @@ Cubre **dos flujos distintos** de la plataforma en una sola tabla:
 | `ref_pasarela` | VARCHAR, nullable | Solo se usa cuando `metodo = 'pasarela'`. |
 | `comprobante_url` | VARCHAR, nullable | Solo se usa cuando `metodo = 'transferencia'`. |
 | `revisado_por` | UUID FK → `usuario`, nullable | Quién aprobó/rechazó el comprobante. No aplica a pagos por pasarela (se confirman solos). |
+| `numero_cuota`, `vencimiento` | SMALLINT, DATE, nullable | Solo `inscripcion`. |
+| `recordatorio_enviado` | BOOLEAN | Ya se mandó el mail de "tu cuota vence pronto" (uno por cuota). |
+
+### `plan_pago` / `plan_pago_cuota`
+Planes de pago en cuotas que el organizador ofrece en un evento (además del pago total, que siempre está). Cada cuota vale un `porcentaje` del costo del participante o un `monto` fijo; la última tiene ambos `NULL` = "el resto". Así un mismo plan sirve con costo único o por zona. Los planes se reemplazan enteros (`PUT /eventos/:id/planes-pago`); no rompe nada porque cada inscripto ya tiene sus cuotas copiadas en `pago`.
+
+`plan_pago.cuota_qr`: con qué cuota aprobada sale la credencial (NULL = al completar el pago). Se copia a la cuota del participante como `pago.envia_qr`.
 
 ---
 
@@ -219,7 +226,8 @@ Archivos en bucket S3-compatible: imágenes de evento (portada, fondo de formula
 | Columna | Tipo | Notas |
 |---|---|---|
 | `evento_id` | UUID FK → `evento`, nullable | Dueño cuando es imagen de portada / fondo de formulario. |
-| `participante_id` | UUID FK → `participante`, nullable | Dueño cuando es el comprobante de pago de esa inscripción. **El comprobante se liga directo al participante, no a `pago`** — si hace falta el pago correspondiente, el service lo resuelve buscando el pago `tipo = 'inscripcion'` de ese participante. |
+| `participante_id` | UUID FK → `participante`, nullable | Dueño cuando es el comprobante de pago de esa inscripción. |
+| `pago_id` | UUID FK → `pago`, nullable | Cuota a la que corresponde el comprobante. Una cuota puede tener varios (se muestra el último). |
 | `subido_por_usuario_id` | UUID FK → `usuario`, nullable | Quién lo subió, cuando es un usuario con cuenta (ej. el organizador subiendo la portada). |
 | `subido_por_participante_id` | UUID FK → `participante`, nullable | El participante puede subir su propio comprobante **sin tener cuenta de usuario**. |
 | `key` | VARCHAR(500) | Path/clave del objeto en el bucket S3-compatible. **No es la URL completa** — el front/service la combina con el dominio del bucket para construir la URL final. |

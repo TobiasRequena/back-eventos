@@ -131,6 +131,7 @@ async function subirArchivo(buffer, metadata, datos) {
     orgId: datos.orgId,
     eventoId: datos.eventoId,
     participanteId: datos.participanteId,
+    pagoId: datos.pagoId,
     subidoPorUsuarioId: datos.usuarioId,
     key,
     nombreOriginal: metadata.originalname,

@@ -5,7 +5,8 @@ const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const { limiterPublico } = require('../../../middlewares/rateLimit');
-const { pagarTramoAdelanteSchema, eventoIdParamSchema } = require('../schemas/pagos.schema');
+const { pagarTramoAdelanteSchema, eventoIdParamSchema, revisarCuotaSchema } = require('../schemas/pagos.schema');
+const pagosInscripcionController = require('../controllers/pagosInscripcion.controller');
 
 // Webhook público
 router.post('/webhook/galiopay', pagosController.webhookGaliopay);
@@ -40,5 +41,14 @@ router.get(
 
 router.get('/eventos-activos', autenticar, resolverOrganizacionActiva, pagosController.listarEventosActivos);
 router.get('/historial', autenticar, resolverOrganizacionActiva, pagosController.listarHistorial);
+
+// Cuotas de inscripción (participante → organización)
+router.patch(
+  '/cuotas/:pagoId/estado',
+  autenticar,
+  resolverOrganizacionActiva,
+  validate(revisarCuotaSchema),
+  pagosInscripcionController.revisarCuota
+);
 
 module.exports = router;

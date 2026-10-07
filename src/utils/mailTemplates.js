@@ -466,7 +466,78 @@ function templateGaleriaHabilitada({ nombre, evento, link }) {
   };
 }
 
+const formatoPesos = (n) => Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+const formatoFecha = (d) => new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+
+function templateCuotaAprobada({ participante, evento, numero, total, saldo }) {
+  const nombreEvento = escapeHtml(evento.nombre);
+  return {
+    subject: `Cuota ${numero}/${total} aprobada — ${evento.nombre}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Recibimos tu pago
+        </h1>
+        <p>Hola <strong>${escapeHtml(participante.nombre)} ${escapeHtml(participante.apellido)}</strong>,</p>
+        <p>El organizador aprobó tu <strong>cuota ${numero} de ${total}</strong> para <strong>${nombreEvento}</strong>.</p>
+        ${saldo > 0
+          ? `<p>Te queda por pagar <strong>${formatoPesos(saldo)}</strong>. Vas a recibir tu credencial cuando completes el pago.</p>`
+          : `<p>Ya completaste el pago. ¡Gracias!</p>`}
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+      </body>
+      </html>
+    `,
+  };
+}
+
+function templateRecordatorioCuota({ participante, evento, cuota, total, link }) {
+  const nombreEvento = escapeHtml(evento.nombre);
+  return {
+    subject: `Recordatorio: tu cuota ${cuota.numero_cuota}/${total} vence el ${formatoFecha(cuota.vencimiento)} — ${evento.nombre}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Se acerca el vencimiento de tu cuota
+        </h1>
+        <p>Hola <strong>${escapeHtml(participante.nombre)} ${escapeHtml(participante.apellido)}</strong>,</p>
+        <p>Tu <strong>cuota ${cuota.numero_cuota} de ${total}</strong> para <strong>${nombreEvento}</strong>
+          de <strong>${formatoPesos(cuota.monto)}</strong> vence el <strong>${formatoFecha(cuota.vencimiento)}</strong>.</p>
+
+        ${(evento.alias_cobro || evento.cbu_cvu) ? `
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          ${evento.alias_cobro ? `<p style="margin: 4px 0;"><strong>Alias:</strong> ${escapeHtml(evento.alias_cobro)}</p>` : ''}
+          ${evento.cbu_cvu ? `<p style="margin: 4px 0;"><strong>CBU/CVU:</strong> ${escapeHtml(evento.cbu_cvu)}</p>` : ''}
+        </div>` : ''}
+
+        <p style="text-align: center; margin: 28px 0;">
+          <a href="${link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">
+            Subir comprobante
+          </a>
+        </p>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+      </body>
+      </html>
+    `,
+  };
+}
+
 module.exports = {
+  templateCuotaAprobada,
+  templateRecordatorioCuota,
   templateGaleriaHabilitada,
   templateConfirmacionInscripcion,
   templateVinculoAceptado,

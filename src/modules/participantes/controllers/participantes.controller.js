@@ -1,5 +1,4 @@
 const participantesService = require('../services/participantes.service');
-const archivosRepository = require('../../archivos/repositories/archivos.repository');
 
 /**
  * POST /api/v1/participantes
@@ -119,32 +118,6 @@ async function obtenerUltimaUbicacion(req, res, next) {
   }
 }
 
-async function obtenerComprobante(req, res, next) {
-  try {
-    const { construirUrlPublica } = require('../../../utils/storage');
-
-    const participante = await participantesService.obtenerParticipante(req.params.id, req.orgId);
-    const comprobante = await archivosRepository.buscarComprobantePorParticipante(participante.id);
-
-    if (!comprobante) {
-      return res.status(404).json({ error: { message: 'Este participante no tiene comprobante cargado' } });
-    }
-
-    res.status(200).json({
-      comprobante: {
-        id: comprobante.id,
-        url: construirUrlPublica(comprobante.key),
-        nombre_original: comprobante.nombre_original,
-        mime_type: comprobante.mime_type,
-        size_bytes: comprobante.size_bytes,
-        creado_en: comprobante.creado_en,
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
 async function reenviarMail(req, res, next) {
   try {
     await participantesService.reenviarMailInscripcion(
@@ -226,9 +199,17 @@ async function actualizarEstadoPago(req, res, next) {
     const resultado = await participantesService.actualizarEstadoPago(
       req.params.id,
       req.orgId,
-      req.body.estadoPago
+      req.body.estadoPago,
+      req.usuario?.sub
     );
     res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
+async function listarCuotas(req, res, next) {
+  try {
+    const cuotas = await participantesService.listarCuotas(req.params.id, req.orgId);
+    res.status(200).json({ cuotas });
   } catch (error) { next(error); }
 }
 
@@ -251,13 +232,13 @@ module.exports = {
   eliminar,
   actualizarEstadoVinculo,
   obtenerUltimaUbicacion,
-  obtenerComprobante,
   reenviarMail,
   listarEliminados,
   subirAutorizacion,
   subirCertificado,
   verificarDni,
   actualizarEstadoPago,
+  listarCuotas,
   actualizarZonaCosto,
   descargarListaPdf,
 };

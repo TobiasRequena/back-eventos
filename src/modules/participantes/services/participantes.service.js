@@ -23,6 +23,7 @@ const { generarCredencial } = require('../../../utils/generarCredencial');
 const { encriptar, desencriptar, hashDni } = require('../../../utils/encryption');
 const { eventoEstaCerrado } = require('../../eventos/services/eventos.service');
 const { verificarYGenerarCargo, verificarCapacidadInscripcion } = require('../../pagos/services/pagos.service');
+const pagosInscripcionService = require('../../pagos/services/pagosInscripcion.service');
 const { getOrSet, invalidar } = require('../../../utils/cache');
 const fichaMedicaRepository = require('../../fichaMedica/repositories/fichaMedica.repository');
 const contactoEmergenciaRepository = require('../../contactoEmergencia/repositories/contactoEmergencia.repository');
@@ -245,7 +246,7 @@ async function crearParticipante(orgId, datos) {
       costoAPagar = zonaCosto.costo;
       zonaCostoId = zonaCosto.id;
     }
-    const estadoPago = costoAPagar > 0 ? datos.estadoPago : 'no_aplica';
+    const estadoPago = costoAPagar > 0 ? (datos.estadoPago ?? 'pendiente') : 'no_aplica';
 
     // 7. Determinar estado_vinculo según rol
     let estadoVinculo = null;
@@ -281,6 +282,14 @@ async function crearParticipante(orgId, datos) {
       },
       trx
     );
+
+    // 6b. Cuotas del plan elegido (una sola por el total si no eligió plan)
+    if (costoAPagar > 0) {
+      await pagosInscripcionService.crearCuotasInscripcion(
+        { participante, costo: costoAPagar, planPagoId: datos.planPagoId, aprobado: estadoPago === 'aprobado' },
+        trx
+      );
+    }
 
     if (datos.fichaMedica) {
       console.log('[ficha] creando ficha para participante:', participante.id);
@@ -901,68 +910,33 @@ async function verificarDniEnEvento(dni, eventoId) {
     nombre: participante.nombre,
     apellido: participante.apellido,
     estadoPago: participante.estado_pago,
+    cuotas: await pagosInscripcionService.listarCuotasPublico(participante.id),
     zona: participante.zona_nombre
       ? { nombre: participante.zona_nombre, costo: participante.zona_costo }
       : null,
   };
 }
 
-async function actualizarEstadoPago(id, orgId, estadoPago) {
-  // Verificar permisos con obtenerParticipante
-  await obtenerParticipante(id, orgId);
+/**
+ * Aprobar/rechazar desde el panel: se aplica a la cuota que corresponde
+ * (la que tiene comprobante en revisión). Los mails los manda pagosInscripcion.
+ */
+async function actualizarEstadoPago(id, orgId, estadoPago, usuarioId) {
+  const participante = await obtenerParticipante(id, orgId);
 
-  // Traer participante crudo para el mail (con dni encriptado y qr_personal)
-  const participante = await participantesRepository.buscarPorId(id);
-  const evento = await eventosRepository.buscarPorId(participante.evento_id);
+  if (estadoPago === 'aprobado' || estadoPago === 'rechazado') {
+    return pagosInscripcionService.revisarProximaCuota(id, orgId, usuarioId, estadoPago);
+  }
 
   await participantesRepository.actualizar(id, { estado_pago: estadoPago });
   invalidar(`evento:${participante.evento_id}`);
-
-  if (estadoPago === 'aprobado') {
-    try {
-      const dniLegible = desencriptar(participante.dni);
-      const credencialBuffer = await generarCredencial({
-        qrPersonal: participante.qr_personal,
-        nombreEvento: evento.nombre,
-        nombreParticipante: `${participante.nombre} ${participante.apellido}`,
-        dni: dniLegible,
-        esReferente: participante.rol_grupo === 'responsable'
-      });
-      let grupo = null;
-      if (participanteActualizado.grupo_id) {
-        grupo = await gruposRepository.buscarPorId(participanteActualizado.grupo_id);
-      }
-
-      const { subject, html } = templateConfirmacionInscripcion({
-        participante: { ...participanteActualizado, dni: datosParaMail.dni },
-        evento,
-        grupo,
-      });
-      enviarMail({
-        to: participante.email,
-        subject,
-        html,
-        attachments: [{
-          filename: `credencial_${dniLegible}.png`,
-          content: credencialBuffer,
-          contentType: 'image/png',
-        }],
-      });
-    } catch (err) {
-      console.error('[mail] Error al enviar mail de aprobación:', err.message);
-    }
-  }
-
-  if (estadoPago === 'rechazado') {
-    try {
-      const { subject, html } = templatePagoRechazado({ participante, evento });
-      enviarMail({ to: participante.email, subject, html });
-    } catch (err) {
-      console.error('[mail] Error al enviar mail de rechazo:', err.message);
-    }
-  }
-
   return { ok: true, estadoPago };
+}
+
+/** Cuotas del participante con sus comprobantes (Admin). */
+async function listarCuotas(id, orgId) {
+  await obtenerParticipante(id, orgId);
+  return pagosInscripcionService.listarCuotasAdmin(id);
 }
 
 /**
@@ -1004,6 +978,7 @@ module.exports = {
   subirCertificado,
   verificarDniEnEvento,
   actualizarEstadoPago,
+  listarCuotas,
   actualizarZonaCosto,
   generarListaPdf,
 };

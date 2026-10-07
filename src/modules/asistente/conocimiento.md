@@ -10,7 +10,8 @@ Plataforma para organizar eventos (campamentos, retiros, encuentros, jornadas, c
 
 ## Crear un evento ("Crear evento" en Dashboard o Eventos)
 Secciones del formulario:
-1. **Datos del evento**: imagen de portada, "Nombre del evento", código (va en el link de inscripción, letras/números/guiones), "Descripción", "Fecha y hora de inicio"/"de fin", "Cupo máximo" (cierra la inscripción sola al llenarse), "Costo de inscripción" o "Costo diferido por zona" (precios distintos según zona/procedencia), "CBU/CVU" y "Alias de cobro" (los inscriptos transfieren y suben el comprobante), "Mostrar en la página de Talita Encuentro".
+1. **Datos del evento**: imagen de portada, "Nombre del evento", código (va en el link de inscripción, letras/números/guiones), "Descripción", "Fecha y hora de inicio"/"de fin", "Cupo máximo" (cierra la inscripción sola al llenarse), "Mostrar en la página de Talita Encuentro".
+   **Costos y cobro**: "Costo de inscripción" o "Costo diferido por zona" (precios distintos según zona/procedencia), "CBU/CVU" y "Alias de cobro" (los inscriptos transfieren y suben el comprobante). "Planes de pago en cuotas": el organizador arma planes (ej. "3 cuotas"); cada cuota vale un % o un monto fijo y tiene vencimiento, la última es el resto. El inscripto elige pagar el total o un plan. En cada plan se elige con qué cuota aprobada se envía el QR (o al completar el pago).
 2. **Adicionales**:
    - "Ficha médica": No requerida / Requerida (alergias, medicación, datos de salud).
    - "Contacto de emergencia": habilita el "Modo emergencia" (contactos a un toque).
@@ -39,10 +40,10 @@ Camino: evento → "Participantes" → "Agrupar" → "Nueva agrupación".
 "Participantes" → "Comunicaciones" → "Nuevo mensaje": "Asunto", "Destinatarios" ("Todos los inscriptos", "Solo acreditados" o "Referentes de grupos"), "Filtros por campo" (filtrar por respuestas del formulario, ej. solo los que eligieron talle M), "Mensaje" y hasta 5 adjuntos (PDF o imagen).
 
 ## Participantes → Listado
-Buscador por nombre, DNI o grupo; "Filtros" (estado de pago, mayores/menores, grupo, zona, respuestas); "Columnas" para mostrar/ocultar; "Descargar Excel". Cada persona tiene "Ver detalle": datos, pago ("Ver comprobante" → "Aprobar pago"/"Rechazar"), cambiar zona, respuestas, ficha médica, autorización, certificado, acreditación. Eliminar participante se puede deshacer por 90 días ("Ver eliminados").
+Buscador por nombre, DNI o grupo; "Filtros" (estado de pago, mayores/menores, grupo, zona, respuestas); "Columnas" para mostrar/ocultar; "Descargar Excel". Cada persona tiene "Ver detalle": datos, pago (cada cuota con "Ver comprobante", "Aprobar" y "Rechazar", y el saldo pendiente), cambiar zona, respuestas, ficha médica, autorización, certificado, acreditación. Eliminar participante se puede deshacer por 90 días ("Ver eliminados").
 
 ## Pagos
-Los inscriptos transfieren al CBU/alias y suben el comprobante desde el link que reciben. En "Resumen", la tarjeta "Comprobantes esperando revisión" lista los pendientes para aprobar o rechazar. Estados: Sin costo, Pendiente de pago, Comprobante cargado, Aprobado, Rechazado.
+Los inscriptos transfieren al CBU/alias y suben el comprobante desde el link que reciben; si pagan en cuotas, suben uno por cuota desde ese mismo link, donde ven las cuotas ya cargadas y su estado. 3 días antes de cada vencimiento les llega un recordatorio por mail. En "Resumen", la tarjeta "Comprobantes esperando revisión" lista los pendientes para aprobar o rechazar. Estados: Sin costo, Pendiente de pago, Comprobante cargado, Aprobado, Rechazado. En el listado, la columna Pago muestra "2/3 cuotas" y los filtros "Debe cuotas" / "Con cuotas vencidas".
 
 ## Acreditación (check-in con QR)
 Cada inscripto recibe un QR por mail. Pestaña "Acreditación": se habilita 2 h antes del inicio; "Link de acreditación" para compartir con quienes acreditan (no necesitan cuenta) y "Abrir interfaz de acreditación". Se escanea el QR, se toca "Acreditar"; el QR del referente acredita a todo su grupo. Avisa si alguien tiene pago, autorización o certificado pendiente. Listas de "Acreditados" / "Sin acreditar" con filtros.

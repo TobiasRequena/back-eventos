@@ -23,6 +23,7 @@ const subirComprobanteSchema = z.object({
   body: z.object({
     participanteId: z.string().uuid('participanteId es obligatorio'),
     eventoId: z.string().uuid().optional(),
+    pagoId: z.string().uuid().optional(), // cuota a la que corresponde; si no viene, la primera sin aprobar
   }),
 });
 

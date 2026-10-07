@@ -65,7 +65,7 @@ routerPlano.get(
   validate(idParamSchema),
   participantesController.obtenerUltimaUbicacion
 );
-routerPlano.get('/:id/comprobante', validate(idParamSchema), participantesController.obtenerComprobante);
+routerPlano.get('/:id/cuotas', validate(idParamSchema), participantesController.listarCuotas);
 routerPlano.post(
   '/:id/reenviar-mail',
   validate(reenviarMailSchema),

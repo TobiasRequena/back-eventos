@@ -4,6 +4,7 @@ const eventosRepository = require('../repositories/eventos.repository');
 const formulariosRepository = require('../../formularios/repositories/formularios.repository');
 const talleresRepository = require('../../talleres/repositories/talleres.repository');
 const zonasCostoRepository = require('../../zonasCosto/repositories/zonasCosto.repository');
+const planesPagoRepository = require('../../planesPago/repositories/planesPago.repository');
 const archivosRepository = require('../../archivos/repositories/archivos.repository');
 const participantesRepository = require('../../participantes/repositories/participantes.repository');
 const pagosRepository = require('../../pagos/repositories/pagos.repository');
@@ -109,10 +110,18 @@ async function crearEvento(orgId, usuarioId, datos) {
       trx
     );
 
+    const planesPagoCreados = await planesPagoRepository.reemplazar(
+      evento.id,
+      orgId,
+      datos.planesPago,
+      trx
+    );
+
     return {
       evento,
       camposForm: camposCreados,
       zonasCosto: zonasCostoCreadas,
+      planesPago: planesPagoCreados,
       // Informativo para el front: así puede mostrar un aviso tipo
       // "este evento es gratis" o "vas a tener que pagar la creación"
       // sin tener que calcularlo de nuevo del lado del cliente.
@@ -203,7 +212,7 @@ async function obtenerEvento(id, orgId) {
   }
 
   return getOrSet(`evento:${id}`, 'detalle_completo', async () => {
-    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos, zonasCosto] = await Promise.all([
+    const [camposForm, bloquesTaller, portada, cantidadInscriptos, pagoPendiente, talleresSueltos, zonasCosto, planesPago] = await Promise.all([
       formulariosRepository.listarPorEvento(evento.id),
       talleresRepository.listarBloquesPorEvento(evento.id),
       archivosRepository.buscarPortadaDeEvento(evento.id),
@@ -211,6 +220,7 @@ async function obtenerEvento(id, orgId) {
       pagosRepository.buscarPagoPendientePorEvento(evento.id),
       talleresRepository.listarTalleresSueltosPorEvento(evento.id),
       zonasCostoRepository.listarPorEvento(evento.id),
+      planesPagoRepository.listarPorEvento(evento.id),
     ]);
 
     return {
@@ -219,6 +229,7 @@ async function obtenerEvento(id, orgId) {
       bloquesTaller,
       talleresSueltos,
       zonasCosto,
+      planesPago,
       cantidadInscriptos,
       imagenUrl: construirUrlPublica(portada?.key),
       pagoPlataforma: pagoPendiente
@@ -316,12 +327,13 @@ async function buscarPorCodigoPublico(codigo) {
   // porque el formulario de inscripción necesita esos datos para renderizarse.
   // No traemos cantidadInscriptos ni imagenUrl porque este endpoint es público
   // y no necesita esos datos para el flujo de inscripción.
-  const [camposForm, bloquesTaller, portada, talleresSueltos, zonasCosto] = await Promise.all([
+  const [camposForm, bloquesTaller, portada, talleresSueltos, zonasCosto, planesPago] = await Promise.all([
     formulariosRepository.listarPorEvento(evento.id),
     talleresRepository.listarBloquesPorEvento(evento.id),
     archivosRepository.buscarPortadaDeEvento(evento.id),
     talleresRepository.listarTalleresSueltosPorEvento(evento.id),
     zonasCostoRepository.listarPorEvento(evento.id),
+    planesPagoRepository.listarPorEvento(evento.id),
   ]);
 
   return {
@@ -331,6 +343,7 @@ async function buscarPorCodigoPublico(codigo) {
     bloquesTaller,
     talleresSueltos,
     zonasCosto,
+    planesPago,
   };
 }
 
