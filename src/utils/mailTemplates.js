@@ -7,7 +7,26 @@
 const descripcionAHtml = require('./descripcionHtml');
 const escapeHtml = require('./escapeHtml');
 
-function templateConfirmacionInscripcion({ participante, evento, grupo = null }) {
+// Saldo, cuotas que faltan y botón a la página de comprobantes. `cuotas` viene de
+// pagosInscripcion.resumenCuotas; null si no hay nada pendiente.
+function bloqueCuotasPendientes(cuotas) {
+  if (!cuotas || cuotas.saldo <= 0) return '';
+  const filas = cuotas.pendientes.map((c) => `
+          <li style="margin: 4px 0;">${cuotas.total > 1 ? `Cuota ${c.numero} de ${cuotas.total}` : 'Pago total'} — <strong>${formatoPesos(c.monto)}</strong>${c.vencimiento ? ` — vence el ${formatoFecha(c.vencimiento)}` : ''}</li>`).join('');
+  return `
+        <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h2 style="margin-top: 0; font-size: 16px; color: #9a3412;">Te quedan por pagar ${formatoPesos(cuotas.saldo)}</h2>
+          <ul style="margin: 8px 0; padding-left: 20px;">${filas}
+          </ul>
+          <p style="margin: 8px 0 0;">Transferí cada cuota y subí el comprobante desde este link:</p>
+          <p style="text-align: center; margin: 16px 0 8px;">
+            <a href="${cuotas.link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">Subir comprobantes</a>
+          </p>
+          <p style="margin: 0; font-size: 12px; color: #6b7280; text-align: center; word-break: break-all;">${cuotas.link}</p>
+        </div>`;
+}
+
+function templateConfirmacionInscripcion({ participante, evento, grupo = null, cuotas = null }) {
   const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -27,6 +46,8 @@ function templateConfirmacionInscripcion({ participante, evento, grupo = null })
         </h1>
         <p>Hola <strong>${participante.nombre} ${participante.apellido}</strong>,</p>
         <p>Tu inscripción al evento <strong>${evento.nombre}</strong> fue registrada exitosamente.</p>
+        ${cuotas?.numero ? `<p>Aprobamos tu <strong>cuota ${cuotas.numero} de ${cuotas.total}</strong>.</p>` : ''}
+        ${bloqueCuotasPendientes(cuotas)}
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos del evento</h2>
@@ -410,7 +431,7 @@ function templateVerificarEmail({ nombre, codigo }) {
   };
 }
 
-function templatePagoRechazado({ participante, evento }) {
+function templatePagoRechazado({ participante, evento, numero = null, total = 1, link = null }) {
   return {
     subject: `Pago rechazado — ${evento.nombre}`,
     html: `
@@ -423,8 +444,13 @@ function templatePagoRechazado({ participante, evento }) {
           Pago rechazado
         </h1>
         <p>Hola <strong>${participante.nombre} ${participante.apellido}</strong>,</p>
-        <p>Lamentablemente el comprobante de pago que enviaste para el evento <strong>${evento.nombre}</strong> fue rechazado por el organizador.</p>
-        <p>Por favor contactate con el organizador para regularizar tu situación.</p>
+        <p>Lamentablemente el comprobante ${total > 1 ? `de tu <strong>cuota ${numero} de ${total}</strong>` : 'de pago'} que enviaste para el evento <strong>${evento.nombre}</strong> fue rechazado por el organizador.</p>
+        ${link ? `
+        <p>Podés subir un nuevo comprobante desde acá:</p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">Subir un nuevo comprobante</a>
+        </p>` : ''}
+        <p>Si tenés dudas, contactate con el organizador.</p>
 
         <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
           Este mail fue generado automáticamente por Talita Encuentros.
@@ -469,7 +495,12 @@ function templateGaleriaHabilitada({ nombre, evento, link }) {
 const formatoPesos = (n) => Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 const formatoFecha = (d) => new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-function templateCuotaAprobada({ participante, evento, numero, total, saldo }) {
+function templateCuotaAprobada({ participante, evento, cuotas }) {
+  const { numero, total, saldo, credencial } = cuotas;
+  // credencial: 'enviada' (ya la tiene), número de cuota con la que sale, o 'al_completar'
+  const textoCredencial = credencial === 'enviada' ? ''
+    : credencial === 'al_completar' ? '<p>Tu credencial te llega cuando completes el pago.</p>'
+      : `<p>Tu credencial te llega cuando se apruebe la cuota ${credencial}.</p>`;
   const nombreEvento = escapeHtml(evento.nombre);
   return {
     subject: `Cuota ${numero}/${total} aprobada — ${evento.nombre}`,
@@ -484,9 +515,7 @@ function templateCuotaAprobada({ participante, evento, numero, total, saldo }) {
         </h1>
         <p>Hola <strong>${escapeHtml(participante.nombre)} ${escapeHtml(participante.apellido)}</strong>,</p>
         <p>El organizador aprobó tu <strong>cuota ${numero} de ${total}</strong> para <strong>${nombreEvento}</strong>.</p>
-        ${saldo > 0
-          ? `<p>Te queda por pagar <strong>${formatoPesos(saldo)}</strong>. Vas a recibir tu credencial cuando completes el pago.</p>`
-          : `<p>Ya completaste el pago. ¡Gracias!</p>`}
+        ${saldo > 0 ? `${textoCredencial}${bloqueCuotasPendientes(cuotas)}` : '<p>Completaste el pago. ¡Gracias!</p>'}
 
         <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
           Este mail fue generado automáticamente por Talita Encuentros.

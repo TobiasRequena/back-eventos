@@ -78,7 +78,31 @@ async function crearCuotasInscripcion({ participante, costo, planPagoId, aprobad
   );
 }
 
-async function enviarCredencial(participante, evento) {
+function linkComprobantes(codigoEvento) {
+  return `${process.env.FRONTEND_URL}/comprobantepago/${codigoEvento}`;
+}
+
+/**
+ * Resumen de cuotas para los mails: saldo, cuotas que faltan, link para subir
+ * comprobantes y cuándo llega la credencial. null si tiene una sola cuota o
+ * ya pagó todo (los mails quedan como antes). `pago` = la cuota recién revisada.
+ */
+async function resumenCuotas(participanteId, evento, pago = null) {
+  const cuotas = await pagosInscripcionRepository.listarPorParticipante(participanteId);
+  const pendientes = cuotas.filter((c) => c.estado !== 'aprobado');
+  if (pendientes.length === 0 && cuotas.length <= 1) return null;
+  return {
+    numero: pago?.numero_cuota ?? null,
+    total: cuotas.length,
+    saldo: pendientes.reduce((s, c) => s + Number(c.monto), 0),
+    pendientes: pendientes.map((c) => ({ numero: c.numero_cuota, monto: c.monto, vencimiento: c.vencimiento })),
+    link: linkComprobantes(evento.codigo),
+    credencial: cuotas.some((c) => c.envia_qr && c.estado === 'aprobado') ? 'enviada'
+      : cuotas.find((c) => c.envia_qr)?.numero_cuota ?? 'al_completar',
+  };
+}
+
+async function enviarCredencial(participante, evento, cuotas = null) {
   const dniLegible = desencriptar(participante.dni);
   const credencialBuffer = await generarCredencial({
     qrPersonal: participante.qr_personal,
@@ -92,6 +116,7 @@ async function enviarCredencial(participante, evento) {
     participante: { ...participante, dni: dniLegible },
     evento,
     grupo,
+    cuotas,
   });
   return enviarMail({
     to: participante.email,
@@ -110,24 +135,24 @@ async function notificarRevision(participanteId, pago, estado) {
   if (!participante?.email) return;
   const evento = await eventosRepository.buscarPorId(participante.evento_id);
 
+  const cuotas = await pagosInscripcionRepository.listarPorParticipante(participanteId);
+
   if (estado === 'rechazado') {
-    const { subject, html } = templatePagoRechazado({ participante, evento });
+    const { subject, html } = templatePagoRechazado({
+      participante, evento, numero: pago.numero_cuota, total: cuotas.length, link: linkComprobantes(evento.codigo),
+    });
     return enviarMail({ to: participante.email, subject, html });
   }
 
-  const cuotas = await pagosInscripcionRepository.listarPorParticipante(participanteId);
-  const aprobadas = cuotas.filter((c) => c.estado === 'aprobado');
-  const completo = aprobadas.length === cuotas.length;
+  const completo = cuotas.every((c) => c.estado === 'aprobado');
   // La credencial sale con la cuota marcada en el plan (envia_qr) o, si el plan
   // no marca ninguna, cuando se completa el pago.
   const tocaCredencial = pago.envia_qr || (completo && !cuotas.some((c) => c.envia_qr));
+  const resumen = await resumenCuotas(participanteId, evento, pago);
 
-  if (tocaCredencial) return enviarCredencial(participante, evento);
+  if (tocaCredencial) return enviarCredencial(participante, evento, resumen);
 
-  const saldo = cuotas.filter((c) => c.estado !== 'aprobado').reduce((s, c) => s + Number(c.monto), 0);
-  const { subject, html } = templateCuotaAprobada({
-    participante, evento, numero: pago.numero_cuota, total: cuotas.length, saldo,
-  });
+  const { subject, html } = templateCuotaAprobada({ participante, evento, cuotas: resumen });
   return enviarMail({ to: participante.email, subject, html });
 }
 
@@ -243,7 +268,7 @@ async function enviarRecordatoriosCuotas() {
       evento: { nombre: cuota.evento_nombre, alias_cobro: cuota.alias_cobro, cbu_cvu: cuota.cbu_cvu },
       cuota,
       total: cuota.total_cuotas,
-      link: `${process.env.FRONTEND_URL}/comprobantepago/${cuota.evento_codigo}`,
+      link: linkComprobantes(cuota.evento_codigo),
     });
     const resultado = await enviarMail({ to: cuota.email, subject, html });
     if (resultado?.ok) {
@@ -255,6 +280,7 @@ async function enviarRecordatoriosCuotas() {
 }
 
 module.exports = {
+  resumenCuotas,
   estadoResumen,
   recalcularEstadoParticipante,
   crearCuotasInscripcion,

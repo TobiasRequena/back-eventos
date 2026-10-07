@@ -12,6 +12,7 @@ const CONOCIMIENTO = fs.readFileSync(path.join(__dirname, '../conocimiento.md'),
 
 // ponytail: Haiku por costo (~4x menos que Opus). Si la calidad no alcanza: 'claude-sonnet-5-5'
 // con output_config: { effort: 'low' } (Haiku no acepta effort)
+const { calcularMontosCuotas } = require('../../planesPago/services/planesPago.service');
 const MODELO = 'claude-haiku-4-5';
 const MAX_VUELTAS = 6; // llamadas a herramientas encadenadas por mensaje
 const RESPUESTA_FALLBACK = 'Perdón, no pude procesar eso. ¿Me lo contás de otra forma?';
@@ -20,7 +21,7 @@ const PROMPT = `Sos Tali, asistente de Talita Encuentro (si te preguntan quién 
 
 Tenés dos trabajos:
 
-1. Ayudar a armar un evento. Preguntá de a una o dos cosas por vez: de qué se trata, fechas, cuánta gente, si cobra, si van menores, si hay grupos, talleres, qué datos necesita pedir. Según lo que cuente, sugerí y explicá en simple las configuraciones que le sirven (ej. "si van menores, te conviene pedir la autorización firmada"). Cada vez que el usuario defina algo del evento, guardalo con las herramientas (actualizar_evento, agregar_campo_formulario, agregar_taller, agregar_bloque_talleres, definir_zonas_costo, quitar). En cada mensaje: primero llamá a las herramientas que guardan lo que el usuario definió y al final llamá SIEMPRE a responder con tu mensaje (qué anotaste en una oración + la próxima pregunta). Si en responder decís que anotaste algo, la herramienta que lo guarda TIENE que estar en ese mismo mensaje; si vas a sugerir algo (ej. autorización de menores), preguntá antes de activarlo, salvo que sea necesario por lo que contó (ej. menores con grupos parroquiales → tieneGrupos: true y politicaMenor que corresponda). No inventes datos que el usuario no dio (fechas, precios, nombres); si falta algo, preguntalo. Las fechas y horas van en hora de Argentina con formato "AAAA-MM-DDTHH:mm" (ej. sábado 14 de noviembre a las 9 → "2026-11-14T09:00"); si no dicen la hora, preguntala. Nunca pidas el código del evento, CBU ni alias: se completan en el formulario al final.
+1. Ayudar a armar un evento. Preguntá de a una o dos cosas por vez: de qué se trata, fechas, cuánta gente, si cobra, si van menores, si hay grupos, talleres, qué datos necesita pedir. Según lo que cuente, sugerí y explicá en simple las configuraciones que le sirven (ej. "si van menores, te conviene pedir la autorización firmada"). Cada vez que el usuario defina algo del evento, guardalo con las herramientas (actualizar_evento, agregar_campo_formulario, agregar_taller, agregar_bloque_talleres, definir_zonas_costo, definir_planes_pago, quitar). Si el evento cobra, preguntá si se va a poder pagar en cuotas. En cada mensaje: primero llamá a las herramientas que guardan lo que el usuario definió y al final llamá SIEMPRE a responder con tu mensaje (qué anotaste en una oración + la próxima pregunta). Si en responder decís que anotaste algo, la herramienta que lo guarda TIENE que estar en ese mismo mensaje; si vas a sugerir algo (ej. autorización de menores), preguntá antes de activarlo, salvo que sea necesario por lo que contó (ej. menores con grupos parroquiales → tieneGrupos: true y politicaMenor que corresponda). No inventes datos que el usuario no dio (fechas, precios, nombres); si falta algo, preguntalo. Las fechas y horas van en hora de Argentina con formato "AAAA-MM-DDTHH:mm" (ej. sábado 14 de noviembre a las 9 → "2026-11-14T09:00"); si no dicen la hora, preguntala. Nunca pidas el código del evento, CBU ni alias: se completan en el formulario al final.
 
 2. Responder "¿cómo hago X?" usando la guía de abajo: si la herramienta existe, explicá el paso a paso con los nombres exactos de botones y pestañas. Si NO existe, decilo con honestidad, proponé la alternativa más cercana si la hay, y SIEMPRE terminá preguntando si quiere que le enviemos al equipo el pedido de esa funcionalidad. Usá solicitar_funcionalidad solo cuando el usuario confirme; si no hay sesión iniciada pedile antes un email de contacto. Nunca prometas que se va a desarrollar ni fechas.
 
@@ -115,9 +116,31 @@ const HERRAMIENTAS = [
     input_schema: objeto({ zonas: { type: 'array', items: objeto({ nombre: str, costo: { type: 'number' } }, ['nombre', 'costo']) } }, ['zonas']),
   },
   {
+    name: 'definir_planes_pago',
+    description: 'Define los planes de pago en cuotas (reemplaza los existentes). El total de una vez siempre está disponible; no lo agregues como plan. Lista vacía = sin cuotas.',
+    input_schema: objeto({
+      planes: {
+        type: 'array',
+        items: objeto({
+          nombre: { type: 'string', description: 'Ej. "3 cuotas"' },
+          cuotas: {
+            type: 'array',
+            description: 'En orden. La última es siempre tipo "resto" (lo que falta, valor 0); las demás "porcentaje" del costo o "monto" fijo en pesos.',
+            items: objeto({
+              tipo: { type: 'string', enum: ['porcentaje', 'monto', 'resto'] },
+              valor: { type: 'number' },
+              vencimiento: { type: 'string', description: '"AAAA-MM-DD" o "" si no tiene' },
+            }, ['tipo', 'valor', 'vencimiento']),
+          },
+          cuotaQr: { type: 'integer', description: 'Con qué cuota aprobada se envía la credencial; 0 = al completar el pago' },
+        }, ['nombre', 'cuotas', 'cuotaQr']),
+      },
+    }, ['planes']),
+  },
+  {
     name: 'quitar',
-    description: 'Quita una pregunta del formulario, un taller/bloque o una zona de costo, por nombre.',
-    input_schema: objeto({ que: { type: 'string', enum: ['campo_formulario', 'taller', 'zona_costo'] }, nombre: str }, ['que', 'nombre']),
+    description: 'Quita una pregunta del formulario, un taller/bloque, una zona de costo o un plan de cuotas, por nombre.',
+    input_schema: objeto({ que: { type: 'string', enum: ['campo_formulario', 'taller', 'zona_costo', 'plan_pago'] }, nombre: str }, ['que', 'nombre']),
   },
   {
     name: 'responder',
@@ -130,6 +153,31 @@ const HERRAMIENTAS = [
     input_schema: objeto({ titulo: str, detalle: str, email: { type: 'string', description: 'Solo si no hay sesión iniciada' } }, ['titulo', 'detalle']),
   },
 ].map((h) => ({ ...h, strict: true }));
+
+/**
+ * Valida un plan que arma el modelo y lo devuelve con la forma del formulario
+ * (cuotaQr 'completo' o el número como string). Con costo único, chequea que cierre.
+ */
+function validarPlan(plan, b) {
+  const { cuotas } = plan;
+  const n = cuotas.length;
+  if (n < 2 || n > 12) throw new Error(`"${plan.nombre}": un plan en cuotas tiene entre 2 y 12 cuotas.`);
+  if (cuotas[n - 1].tipo !== 'resto' || cuotas.slice(0, -1).some((c) => c.tipo === 'resto' || !(c.valor > 0))) {
+    throw new Error(`"${plan.nombre}": la última cuota es "resto" y las demás necesitan un valor mayor a 0.`);
+  }
+  const pct = cuotas.reduce((s, c) => s + (c.tipo === 'porcentaje' ? c.valor : 0), 0);
+  if (pct >= 100) throw new Error(`"${plan.nombre}": los porcentajes tienen que sumar menos de 100 (la última es el resto).`);
+  const paraCalculo = cuotas.map((c) => (c.tipo === 'porcentaje' ? { porcentaje: c.valor } : c.tipo === 'monto' ? { monto: c.valor } : {}));
+  if (!b.tienePrecioPorZona && b.costo > 0 && !calcularMontosCuotas(b.costo, paraCalculo)) {
+    throw new Error(`"${plan.nombre}": las cuotas suman el costo o más; la última tiene que quedar con algo.`);
+  }
+  if (plan.cuotaQr < 0 || plan.cuotaQr >= n) throw new Error(`"${plan.nombre}": cuotaQr va de 1 a ${n - 1}, o 0 para al completar el pago.`);
+  return {
+    nombre: plan.nombre,
+    cuotaQr: plan.cuotaQr > 0 ? String(plan.cuotaQr) : 'completo',
+    cuotas: cuotas.map((c) => ({ tipo: c.tipo, valor: c.tipo === 'resto' ? '' : c.valor, vencimiento: c.vencimiento || '' })),
+  };
+}
 
 const mismoNombre = (a, b) => a?.trim().toLowerCase() === b?.trim().toLowerCase();
 const sinNombre = (lista = [], nombre, clave = 'nombre') => lista.filter((x) => !mismoNombre(x[clave], nombre));
@@ -168,7 +216,15 @@ async function ejecutar(nombre, input, b, ctx) {
       if (input.zonas.some((z) => !(z.costo > 0))) throw new Error('Cada zona necesita un costo mayor a 0.');
       return { ...b, zonasCosto: input.zonas, tienePrecioPorZona: input.zonas.length > 0 };
     }
+    case 'definir_planes_pago': {
+      const planesPago = input.planes.map((plan) => validarPlan(plan, b));
+      return { ...b, planesPago, aceptaCuotas: planesPago.length > 0 };
+    }
     case 'quitar': {
+      if (input.que === 'plan_pago') {
+        const planesPago = sinNombre(b.planesPago, input.nombre);
+        return { ...b, planesPago, aceptaCuotas: planesPago.length > 0 };
+      }
       if (input.que === 'campo_formulario') return { ...b, camposForm: sinNombre(b.camposForm, input.nombre, 'etiqueta') };
       if (input.que === 'zona_costo') {
         const zonasCosto = sinNombre(b.zonasCosto, input.nombre);

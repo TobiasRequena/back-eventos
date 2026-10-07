@@ -645,6 +645,8 @@ async function reenviarMailInscripcion(id, orgId, emailOverride = null) {
     },
     evento,
     grupo,
+    // Si le quedan cuotas, el mail reenviado lo dice (saldo, cuotas y link)
+    cuotas: await pagosInscripcionService.resumenCuotas(participante.id, evento),
   });
 
   const destinatario = emailOverride ?? participante.email;
