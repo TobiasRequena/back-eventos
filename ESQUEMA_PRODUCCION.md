@@ -40,6 +40,7 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 | mime_type | character varying(100) | NO |  |
 | size_bytes | integer | NO |  |
 | creado_en | timestamp with time zone | NO | now() |
+| pago_id | uuid | YES |  |
 
 **PK**: id
 
@@ -48,6 +49,7 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 **FKs**:
 - `evento_id` → `evento.id` (ON DELETE CASCADE)
 - `org_id` → `organizacion.id` (ON DELETE CASCADE)
+- `pago_id` → `pago.id` (ON DELETE SET NULL)
 - `participante_id` → `participante.id` (ON DELETE CASCADE)
 - `subido_por_participante_id` → `participante.id` (ON DELETE SET NULL)
 - `subido_por_usuario_id` → `usuario.id` (ON DELETE SET NULL)
@@ -56,6 +58,7 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 - `archivo_pkey`: `CREATE UNIQUE INDEX archivo_pkey ON public.archivo USING btree (id)`
 - `idx_archivo_evento`: `CREATE INDEX idx_archivo_evento ON public.archivo USING btree (evento_id) WHERE (evento_id IS NOT NULL)`
 - `idx_archivo_org`: `CREATE INDEX idx_archivo_org ON public.archivo USING btree (org_id)`
+- `idx_archivo_pago`: `CREATE INDEX idx_archivo_pago ON public.archivo USING btree (pago_id)`
 - `idx_archivo_participante`: `CREATE INDEX idx_archivo_participante ON public.archivo USING btree (participante_id) WHERE (participante_id IS NOT NULL)`
 
 ## `bloque_taller`
@@ -566,6 +569,10 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 | notificado_urgente | boolean | NO | false |
 | link_pago | character varying(500) | YES |  |
 | tramo_id | uuid | YES |  |
+| numero_cuota | smallint | YES |  |
+| vencimiento | date | YES |  |
+| recordatorio_enviado | boolean | NO | false |
+| envia_qr | boolean | NO | false |
 
 **PK**: id
 
@@ -685,6 +692,54 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 - `idx_participante_taller_taller`: `CREATE INDEX idx_participante_taller_taller ON public.participante_taller USING btree (taller_id)`
 - `participante_taller_pkey`: `CREATE UNIQUE INDEX participante_taller_pkey ON public.participante_taller USING btree (id)`
 - `uq_participante_taller`: `CREATE UNIQUE INDEX uq_participante_taller ON public.participante_taller USING btree (participante_id, taller_id)`
+
+## `plan_pago`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| org_id | uuid | NO |  |
+| evento_id | uuid | NO |  |
+| nombre | character varying(100) | NO |  |
+| orden | smallint | NO | 0 |
+| cuota_qr | smallint | YES |  |
+
+**PK**: id
+
+**FKs**:
+- `evento_id` → `evento.id` (ON DELETE CASCADE)
+- `org_id` → `organizacion.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `idx_plan_pago_evento`: `CREATE INDEX idx_plan_pago_evento ON public.plan_pago USING btree (evento_id)`
+- `plan_pago_pkey`: `CREATE UNIQUE INDEX plan_pago_pkey ON public.plan_pago USING btree (id)`
+
+## `plan_pago_cuota`
+
+| Columna | Tipo | Nullable | Default |
+|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() |
+| plan_pago_id | uuid | NO |  |
+| numero | smallint | NO |  |
+| porcentaje | numeric(5,2) | YES |  |
+| monto | numeric(12,2) | YES |  |
+| vencimiento | date | YES |  |
+
+**PK**: id
+
+**Check**: `plan_pago_cuota_check`: `CHECK (((porcentaje IS NULL) OR (monto IS NULL)))`
+**Check**: `plan_pago_cuota_monto_check`: `CHECK ((monto > (0)::numeric))`
+**Check**: `plan_pago_cuota_numero_check`: `CHECK (((numero >= 1) AND (numero <= 12)))`
+**Check**: `plan_pago_cuota_porcentaje_check`: `CHECK (((porcentaje > (0)::numeric) AND (porcentaje < (100)::numeric)))`
+
+**Unique**: (plan_pago_id, numero)
+
+**FKs**:
+- `plan_pago_id` → `plan_pago.id` (ON DELETE CASCADE)
+
+**Índices**:
+- `plan_pago_cuota_pkey`: `CREATE UNIQUE INDEX plan_pago_cuota_pkey ON public.plan_pago_cuota USING btree (id)`
+- `plan_pago_cuota_plan_pago_id_numero_key`: `CREATE UNIQUE INDEX plan_pago_cuota_plan_pago_id_numero_key ON public.plan_pago_cuota USING btree (plan_pago_id, numero)`
 
 ## `punto_acceso`
 
