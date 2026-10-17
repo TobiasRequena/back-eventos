@@ -229,6 +229,8 @@ async function buscarPorDniYEvento(dni, eventoId) {
       'participante.nombre',
       'participante.apellido',
       'participante.estado_pago',
+      'participante.es_mayor',
+      'participante.autorizacion_url',
       'zona_costo.nombre as zona_nombre',
       'zona_costo.costo as zona_costo'
     )

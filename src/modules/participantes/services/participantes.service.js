@@ -831,19 +831,16 @@ async function listarEliminados(eventoId, orgId) {
   return eliminados.map((p) => sanitizarParticipante(p, 'admin'));
 }
 
-// La subida pública es solo la que hace el wizard justo después de inscribir: sin auth,
-// con el id alcanzaría para pisar el documento de otro. Solo primera subida y recién inscripto.
-const VENTANA_SUBIDA_PUBLICA_MS = 60 * 60 * 1000;
-
+// Subida pública (wizard o /autorizacion/:codigo): sin auth, con el id alcanzaría para pisar
+// el documento de otro, así que solo se permite si todavía no tiene uno cargado.
 async function buscarParaSubidaPublica(id, campoUrl) {
   const participante = await participantesRepository.buscarPorId(id);
   if (!participante) {
     const error = new Error('Participante no encontrado');
     error.status = 404; throw error;
   }
-  const fueraDeVentana = Date.now() - new Date(participante.creado_en).getTime() > VENTANA_SUBIDA_PUBLICA_MS;
-  if (participante[campoUrl] || fueraDeVentana) {
-    const error = new Error('El documento ya no se puede subir desde la inscripción. Contactá al organizador.');
+  if (participante[campoUrl]) {
+    const error = new Error('Ya hay un documento cargado. Si necesitás reemplazarlo, contactá al organizador.');
     error.status = 403; throw error;
   }
   return participante;
@@ -923,6 +920,8 @@ async function verificarDniEnEvento(dni, eventoId) {
     nombre: participante.nombre,
     apellido: participante.apellido,
     estadoPago: participante.estado_pago,
+    esMayor: participante.es_mayor,
+    tieneAutorizacion: Boolean(participante.autorizacion_url),
     cuotas: await pagosInscripcionService.listarCuotasPublico(participante.id),
     zona: participante.zona_nombre
       ? { nombre: participante.zona_nombre, costo: participante.zona_costo }

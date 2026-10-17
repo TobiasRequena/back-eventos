@@ -26,6 +26,21 @@ function bloqueCuotasPendientes(cuotas) {
         </div>`;
 }
 
+// Link a /autorizacion/:codigo solo si el evento la pide, es menor y todavía no la subió
+function bloqueAutorizacionPendiente(participante, evento) {
+  if (!evento.requiere_autorizacion_menores || participante.es_mayor !== false || participante.autorizacion_url) return '';
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/autorizacion/${evento.codigo}`;
+  return `
+        <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h2 style="margin-top: 0; font-size: 16px; color: #9a3412;">Falta la autorización firmada</h2>
+          <p style="margin: 8px 0 0;">Si todavía no subiste la autorización del tutor, podés ${evento.autorizacion_template_url ? 'descargar el template y ' : ''}subirla firmada desde este link:</p>
+          <p style="text-align: center; margin: 16px 0 8px;">
+            <a href="${link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">Subir autorización</a>
+          </p>
+          <p style="margin: 0; font-size: 12px; color: #6b7280; text-align: center; word-break: break-all;">${link}</p>
+        </div>`;
+}
+
 function templateConfirmacionInscripcion({ participante, evento, grupo = null, cuotas = null }) {
   const fechaInicio = new Date(evento.fecha_inicio).toLocaleDateString('es-AR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -48,6 +63,7 @@ function templateConfirmacionInscripcion({ participante, evento, grupo = null, c
         <p>Tu inscripción al evento <strong>${evento.nombre}</strong> fue registrada exitosamente.</p>
         ${cuotas?.numero ? `<p>Aprobamos tu <strong>cuota ${cuotas.numero} de ${cuotas.total}</strong>.</p>` : ''}
         ${bloqueCuotasPendientes(cuotas)}
+        ${bloqueAutorizacionPendiente(participante, evento)}
 
         <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <h2 style="margin-top: 0; font-size: 16px; color: #374151;">Datos del evento</h2>
