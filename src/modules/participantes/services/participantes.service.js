@@ -853,6 +853,11 @@ async function subirAutorizacion(id, orgId, file) {
     participante = await obtenerParticipante(id, orgId);
   } else {
     participante = await buscarParaSubidaPublica(id, 'autorizacion_url');
+    const evento = await buscarEventoCacheado(participante.evento_id);
+    if (!evento?.requiere_autorizacion_menores) {
+      const error = new Error('Este evento no pide autorización de menores');
+      error.status = 400; throw error;
+    }
   }
 
   const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
