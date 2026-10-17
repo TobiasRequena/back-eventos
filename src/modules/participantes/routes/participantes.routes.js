@@ -1,12 +1,8 @@
 const express = require('express');
-const multer = require('multer');
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-});
 
 const participantesController = require('../controllers/participantes.controller');
 const validate = require('../../../middlewares/validate');
+const upload = require('../../../middlewares/upload');
 const autenticar = require('../../../middlewares/autenticar');
 const autenticarAdminOReferente = require('../../../middlewares/autenticarAdminOReferente');
 const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');

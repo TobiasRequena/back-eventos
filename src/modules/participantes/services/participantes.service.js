@@ -831,16 +831,30 @@ async function listarEliminados(eventoId, orgId) {
   return eliminados.map((p) => sanitizarParticipante(p, 'admin'));
 }
 
+// La subida pública es solo la que hace el wizard justo después de inscribir: sin auth,
+// con el id alcanzaría para pisar el documento de otro. Solo primera subida y recién inscripto.
+const VENTANA_SUBIDA_PUBLICA_MS = 60 * 60 * 1000;
+
+async function buscarParaSubidaPublica(id, campoUrl) {
+  const participante = await participantesRepository.buscarPorId(id);
+  if (!participante) {
+    const error = new Error('Participante no encontrado');
+    error.status = 404; throw error;
+  }
+  const fueraDeVentana = Date.now() - new Date(participante.creado_en).getTime() > VENTANA_SUBIDA_PUBLICA_MS;
+  if (participante[campoUrl] || fueraDeVentana) {
+    const error = new Error('El documento ya no se puede subir desde la inscripción. Contactá al organizador.');
+    error.status = 403; throw error;
+  }
+  return participante;
+}
+
 async function subirAutorizacion(id, orgId, file) {
   let participante;
   if (orgId) {
     participante = await obtenerParticipante(id, orgId);
   } else {
-    participante = await participantesRepository.buscarPorId(id);
-    if (!participante) {
-      const error = new Error('Participante no encontrado');
-      error.status = 404; throw error;
-    }
+    participante = await buscarParaSubidaPublica(id, 'autorizacion_url');
   }
 
   const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -849,7 +863,7 @@ async function subirAutorizacion(id, orgId, file) {
     error.status = 400; throw error;
   }
 
-  const ext = file.mimetype === 'application/pdf' ? 'pdf' : 'jpg';
+  const ext = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/webp': 'webp' }[file.mimetype] ?? 'jpg';
   const key = `autorizaciones/${participante.evento_id}/${id}.${ext}`;
 
   await s3Client.send(new PutObjectCommand({
@@ -859,7 +873,8 @@ async function subirAutorizacion(id, orgId, file) {
     ContentType: file.mimetype,
   }));
 
-  const url = construirUrlPublica(key);
+  // ?v= para no ver la versión cacheada si se vuelve a subir
+  const url = `${construirUrlPublica(key)}?v=${Date.now()}`;
   await participantesRepository.actualizar(id, { autorizacion_url: url });
   invalidar(`evento:${participante.evento_id}`);
 
@@ -871,11 +886,7 @@ async function subirCertificado(id, orgId, file) {
   if (orgId) {
     participante = await obtenerParticipante(id, orgId);
   } else {
-    participante = await participantesRepository.buscarPorId(id);
-    if (!participante) {
-      const error = new Error('Participante no encontrado');
-      error.status = 404; throw error;
-    }
+    participante = await buscarParaSubidaPublica(id, 'certificado_url');
   }
 
   const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];

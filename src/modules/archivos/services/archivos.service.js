@@ -176,12 +176,20 @@ async function eliminarArchivo(id) {
   await _eliminarArchivoFisico(archivo);
 }
 
-async function subirAutorizacionTemplate(file, eventoId, usuarioId) {
-  console.log('[autorizacion-template] eventoId:', eventoId);
-  console.log('[autorizacion-template] file:', file?.originalname, file?.mimetype);
+async function subirAutorizacionTemplate(file, eventoId, orgId) {
   if (file.mimetype !== 'application/pdf') {
     const error = new Error('Solo se aceptan archivos PDF');
     error.status = 400; throw error;
+  }
+
+  const evento = eventoId ? await eventosRepository.buscarPorId(eventoId) : null;
+  if (!evento) {
+    const error = new Error('Evento no encontrado');
+    error.status = 404; throw error;
+  }
+  if (evento.org_id !== orgId) {
+    const error = new Error('No tenés permisos sobre este evento');
+    error.status = 403; throw error;
   }
 
   const key = `autorizacion-templates/${eventoId}.pdf`;
@@ -190,17 +198,16 @@ async function subirAutorizacionTemplate(file, eventoId, usuarioId) {
     Key: key,
     Body: file.buffer,
     ContentType: 'application/pdf',
+    ContentDisposition: 'attachment; filename="autorizacion.pdf"',
   }));
 
-  // Guardar URL en evento
-  await eventosRepository.actualizar(eventoId, {
-    autorizacion_template_url: construirUrlPublica(key),
-  });
+  // ?v= para que CDN/navegador no sirvan el template anterior (la key se reutiliza)
+  const url = `${construirUrlPublica(key)}?v=${Date.now()}`;
+  await eventosRepository.actualizar(eventoId, { autorizacion_template_url: url });
 
-  // Invalidar caché
   invalidar(`evento:${eventoId}`);
 
-  return construirUrlPublica(key);
+  return url;
 }
 
 module.exports = { subirArchivo, obtenerArchivo, eliminarArchivo, subirAutorizacionTemplate, subirImagen };

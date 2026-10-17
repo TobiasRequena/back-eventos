@@ -5,6 +5,7 @@ const archivosController = require('../controllers/archivos.controller');
 const validate = require('../../../middlewares/validate');
 const autenticar = require('../../../middlewares/autenticar');
 const upload = require('../../../middlewares/upload');
+const resolverOrganizacionActiva = require('../../../middlewares/resolverOrganizacionActiva');
 const { subirPortadaSchema, subirComprobanteSchema, idParamSchema } = require('../schemas/archivos.schema');
 
 // POST portada_evento — requiere auth (lo sube el admin)
@@ -26,6 +27,6 @@ router.post(
 
 router.get('/:id', validate(idParamSchema), archivosController.obtener);
 router.delete('/:id', autenticar, validate(idParamSchema), archivosController.eliminar);
-router.post('/autorizacion-template', autenticar, upload.single('archivo'), archivosController.subirAutorizacionTemplate);
+router.post('/autorizacion-template', autenticar, resolverOrganizacionActiva, upload.single('archivo'), archivosController.subirAutorizacionTemplate);
 
 module.exports = router;

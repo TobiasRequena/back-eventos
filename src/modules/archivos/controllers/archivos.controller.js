@@ -73,12 +73,10 @@ async function eliminar(req, res, next) {
 
 async function subirAutorizacionTemplate(req, res, next) {
   try {
-    console.log('[autorizacion-template] body:', req.body);
-    console.log('[autorizacion-template] file:', req.file?.originalname);
     if (!req.file) {
       return res.status(400).json({ error: { message: 'No se recibió ningún archivo' } });
     }
-    const url = await archivosService.subirAutorizacionTemplate(req.file, req.body.eventoId, req.usuario.sub);
+    const url = await archivosService.subirAutorizacionTemplate(req.file, req.body.eventoId, req.orgId);
     res.status(200).json({ url });
   } catch (error) { next(error); }
 }
