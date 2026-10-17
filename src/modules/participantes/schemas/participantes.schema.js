@@ -92,6 +92,15 @@ const actualizarEstadoPagoSchema = z.object({
   }),
 });
 
+const revisarAutorizacionSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Id de participante inválido'),
+  }),
+  body: z.object({
+    aprobada: z.boolean(),
+  }),
+});
+
 const actualizarZonaCostoSchema = z.object({
   params: z.object({
     id: z.string().uuid('Id de participante inválido'),
@@ -131,5 +140,6 @@ module.exports = {
   reenviarMailSchema,
   actualizarEstadoPagoSchema,
   actualizarZonaCostoSchema,
+  revisarAutorizacionSchema,
   listaPdfSchema,
 };

@@ -173,6 +173,13 @@ async function subirAutorizacion(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function revisarAutorizacion(req, res, next) {
+  try {
+    const resultado = await participantesService.revisarAutorizacion(req.params.id, req.orgId, req.body.aprobada);
+    res.status(200).json(resultado);
+  } catch (error) { next(error); }
+}
+
 async function subirCertificado(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ error: { message: 'No se recibió ningún archivo' } });
@@ -235,6 +242,7 @@ module.exports = {
   reenviarMail,
   listarEliminados,
   subirAutorizacion,
+  revisarAutorizacion,
   subirCertificado,
   verificarDni,
   actualizarEstadoPago,

@@ -447,6 +447,38 @@ function templateVerificarEmail({ nombre, codigo }) {
   };
 }
 
+function templateAutorizacionRechazada({ participante, evento }) {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/autorizacion/${evento.codigo}`;
+  return {
+    subject: `Autorización rechazada — ${evento.nombre}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head><meta charset="UTF-8"></head>
+      <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+
+        <h1 style="color: #1E3A5F; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px;">
+          Autorización rechazada
+        </h1>
+        <p>Hola <strong>${escapeHtml(participante.nombre)} ${escapeHtml(participante.apellido)}</strong>,</p>
+        <p>El organizador del evento <strong>${escapeHtml(evento.nombre)}</strong> rechazó la autorización del tutor que subiste.</p>
+        <p>Podés volver a subirla firmada desde este link${evento.autorizacion_template_url ? ' (ahí también podés descargar el template)' : ''}:</p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${link}" style="background: #1E3A5F; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block;">Subir la autorización</a>
+        </p>
+        <p style="margin: 0 0 16px; font-size: 12px; color: #6b7280; text-align: center; word-break: break-all;">${link}</p>
+        <p>O, si preferís, llevala <strong>impresa y firmada el día del evento</strong>.</p>
+        <p>Si tenés dudas, contactate con el organizador.</p>
+
+        <p style="color: #6b7280; font-size: 13px; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Este mail fue generado automáticamente por Talita Encuentros.
+        </p>
+      </body>
+      </html>
+    `,
+  };
+}
+
 function templatePagoRechazado({ participante, evento, numero = null, total = 1, link = null }) {
   return {
     subject: `Pago rechazado — ${evento.nombre}`,
@@ -585,6 +617,7 @@ module.exports = {
   templateRecordatorioCuota,
   templateGaleriaHabilitada,
   templateConfirmacionInscripcion,
+  templateAutorizacionRechazada,
   templateVinculoAceptado,
   templateVinculoRechazado,
   templateSolicitudPendiente,

@@ -17,6 +17,7 @@ const {
   templateSolicitudPendiente,
   templateVinculoAceptado,
   templateVinculoRechazado,
+  templateAutorizacionRechazada,
 } = require('../../../utils/mailTemplates');
 const { generarCredencial } = require('../../../utils/generarCredencial');
 
@@ -840,7 +841,7 @@ async function buscarParaSubidaPublica(id, campoUrl) {
     error.status = 404; throw error;
   }
   if (participante[campoUrl]) {
-    const error = new Error('Ya hay un documento cargado. Si necesitás reemplazarlo, contactá al organizador.');
+    const error = new Error('Ya hay un documento cargado. Si el organizador lo rechaza, te llega un mail para volver a subirlo.');
     error.status = 403; throw error;
   }
   return participante;
@@ -872,10 +873,39 @@ async function subirAutorizacion(id, orgId, file) {
 
   // ?v= para no ver la versión cacheada si se vuelve a subir
   const url = `${construirUrlPublica(key)}?v=${Date.now()}`;
-  await participantesRepository.actualizar(id, { autorizacion_url: url });
+  await participantesRepository.actualizar(id, { autorizacion_url: url, autorizacion_aprobada: false });
   invalidar(`evento:${participante.evento_id}`);
 
   return { autorizacion_url: url };
+}
+
+/**
+ * El organizador aprueba o rechaza la autorización cargada. Rechazar la borra (así el
+ * participante puede volver a subirla desde /autorizacion/:codigo) y le avisa por mail.
+ */
+async function revisarAutorizacion(id, orgId, aprobada) {
+  const participante = await obtenerParticipante(id, orgId);
+  if (!participante.autorizacion_url) {
+    const error = new Error('El participante no tiene una autorización cargada');
+    error.status = 400; throw error;
+  }
+
+  const cambios = aprobada
+    ? { autorizacion_aprobada: true }
+    : { autorizacion_url: null, autorizacion_aprobada: false };
+  await participantesRepository.actualizar(id, cambios);
+  invalidar(`evento:${participante.evento_id}`);
+
+  if (!aprobada && participante.email) {
+    const evento = await buscarEventoCacheado(participante.evento_id);
+    enviarMail({ to: participante.email, ...templateAutorizacionRechazada({ participante, evento }) })
+      .catch((err) => console.error('[mail] Error al enviar rechazo de autorización:', err.message));
+  }
+
+  return {
+    autorizacion_url: cambios.autorizacion_url === null ? null : participante.autorizacion_url,
+    autorizacion_aprobada: cambios.autorizacion_aprobada,
+  };
 }
 
 async function subirCertificado(id, orgId, file) {
@@ -987,6 +1017,7 @@ module.exports = {
   reenviarMailInscripcion,
   listarEliminados,
   subirAutorizacion,
+  revisarAutorizacion,
   subirCertificado,
   verificarDniEnEvento,
   actualizarEstadoPago,

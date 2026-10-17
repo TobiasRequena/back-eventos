@@ -18,7 +18,7 @@ const { reenviarMailSchema } = require('../schemas/participantes.schema');
 const fichaMedicaController = require('../../fichaMedica/controllers/fichaMedica.controller');
 const { crearFichaMedicaSchema } = require('../../fichaMedica/schemas/fichaMedica.schema');
 const contactoEmergenciaController = require('../../contactoEmergencia/controllers/contactoEmergencia.controller');
-const { actualizarEstadoPagoSchema, actualizarZonaCostoSchema } = require('../schemas/participantes.schema');
+const { actualizarEstadoPagoSchema, actualizarZonaCostoSchema, revisarAutorizacionSchema } = require('../schemas/participantes.schema');
 const verificarPagoPendiente = require('../../../middlewares/verificarPagoPendiente');
 
 // Router anidado: GET /eventos/:eventoId/participantes (requiere auth)
@@ -68,6 +68,7 @@ routerPlano.post(
   participantesController.reenviarMail
 );
 routerPlano.patch('/:id/autorizacion', upload.single('archivo'), participantesController.subirAutorizacion);
+routerPlano.patch('/:id/autorizacion/revision', validate(revisarAutorizacionSchema), participantesController.revisarAutorizacion);
 routerPlano.patch('/:id/certificado', upload.single('archivo'), participantesController.subirCertificado);
 routerPlano.get('/:id/ficha-medica', autenticar, resolverOrganizacionActiva, fichaMedicaController.obtenerFicha);
 routerPlano.patch('/:id/ficha-medica', autenticar, resolverOrganizacionActiva, validate(crearFichaMedicaSchema), fichaMedicaController.guardarFicha);
