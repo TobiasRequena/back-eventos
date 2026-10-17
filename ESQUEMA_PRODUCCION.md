@@ -623,6 +623,7 @@ Generado con `node scripts/generar_esquema.js <DATABASE_URL> produccion`. No edi
 | autorizacion_url | character varying(500) | YES |  |
 | certificado_url | character varying(500) | YES |  |
 | zona_costo_id | uuid | YES |  |
+| autorizacion_aprobada | boolean | NO | false |
 
 **PK**: id
 
